@@ -27,6 +27,7 @@ import { normalizeTheme, persistTheme } from "../lib/theme";
 import { THEME_IDS, THEME_LABELS, type ThemeId, type User } from "../types";
 import { cls } from "../lib/utils";
 import { wipeMyCloudData } from "../lib/wipeCloud";
+import ProfileIdentitySection from "../components/ProfileIdentitySection";
 
 export default function SettingsPage() {
   const {
@@ -86,13 +87,6 @@ export default function SettingsPage() {
         msg: e instanceof Error ? e.message : "연결 실패",
       });
     }
-  }
-
-  async function renameUser(u: User) {
-    const name = prompt("새 이름을 입력하세요", u.name)?.trim();
-    if (!name) return;
-    await db.users.put({ ...u, name, updatedAt: Date.now() });
-    afterUserDataMutation();
   }
 
   async function changeColor(u: User, color: string) {
@@ -318,28 +312,31 @@ export default function SettingsPage() {
           </p>
         )}
         {profileUser ? (
-          <div className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/50 p-2">
-            <label className="relative cursor-pointer">
-              <span
-                className="flex h-10 w-10 items-center justify-center rounded-xl text-base font-bold text-white"
-                style={{ backgroundColor: profileUser.color }}
-              >
-                {profileUser.name.slice(0, 1)}
-              </span>
-              <input
-                type="color"
-                value={profileUser.color}
-                onChange={(e) => changeColor(profileUser, e.target.value)}
-                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-              />
-            </label>
-            <button
-              type="button"
-              onClick={() => renameUser(profileUser)}
-              className="flex-1 text-left text-sm font-medium text-slate-100 hover:underline"
-            >
-              {profileUser.name}
-            </button>
+          <div className="space-y-4">
+            <ProfileIdentitySection user={profileUser} authUser={user} />
+            <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3">
+              <p className="mb-2 text-[11px] text-slate-500">
+                피드·달력 등에서 내 항목을 구분할 때 쓰이는 색이에요.
+              </p>
+              <div className="flex items-center gap-3">
+                <span className="shrink-0 text-xs text-slate-400">식별 색</span>
+                <label className="relative shrink-0 cursor-pointer">
+                  <span
+                    className="flex h-10 w-10 items-center justify-center rounded-xl text-base font-bold text-white shadow-inner"
+                    style={{ backgroundColor: profileUser.color }}
+                  >
+                    {profileUser.name.slice(0, 1)}
+                  </span>
+                  <input
+                    type="color"
+                    value={profileUser.color}
+                    onChange={(e) => changeColor(profileUser, e.target.value)}
+                    className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                    aria-label="식별 색 변경"
+                  />
+                </label>
+              </div>
+            </div>
           </div>
         ) : (
           <p className="text-sm text-slate-500">프로필을 불러오는 중이에요.</p>
