@@ -30,6 +30,36 @@ import { getFirebaseAuth, getFirestoreDb } from "./firebaseApp";
 import { storedToMeal, type MealStored } from "./cloudSync";
 import { resolveDisplayName, resolveDisplayPhotoURL } from "./identity";
 
+/** Firestore 쓰기가 네트워크 때문에 끝없이 대기할 때 사용자에게 타임아웃 안내 */
+function withFirestoreDeadline<T>(
+  promise: Promise<T>,
+  ms: number,
+  timeoutMsg: string,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const id = setTimeout(() => reject(new Error(timeoutMsg)), ms);
+    promise
+      .then((v) => {
+        clearTimeout(id);
+        resolve(v);
+      })
+      .catch((e) => {
+        clearTimeout(id);
+        reject(e);
+      });
+  });
+}
+
+/** 초대 문서에는 짧은 http(s) 프로필만 — base64 등은 문서 과대·저장 지연을 유발 */
+function sanitizeInviteProfilePhoto(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const u = raw.trim();
+  if (u.length === 0 || u.length > 2048) return undefined;
+  if (u.startsWith("data:") || u.startsWith("blob:")) return undefined;
+  if (u.startsWith("https://") || u.startsWith("http://")) return u;
+  return undefined;
+}
+
 export function normalizeEmail(s: string): string {
   return s.trim().toLowerCase();
 }
@@ -255,6 +285,7 @@ export async function createFriendInviteCode(
 ): Promise<FriendInviteCode> {
   const me = requireUser();
   const myEmail = requireEmail(me);
+  await me.getIdToken();
   if (!requestedScope.calendar || requestedScope.health) {
     throw new Error("링크 초대는 식단(달력) 공개만 가능해요.");
   }
@@ -263,13 +294,14 @@ export async function createFriendInviteCode(
   const id = secureRandomInviteId();
   const now = Date.now();
   const myName = resolveDisplayName(localUser, me) || myEmail;
-  const myPhoto = resolveDisplayPhotoURL(localUser, me.photoURL);
+  const myPhotoRaw = resolveDisplayPhotoURL(localUser, me.photoURL);
+  const myPhoto = sanitizeInviteProfilePhoto(myPhotoRaw);
 
   const data: FriendInviteCode = {
     id,
     fromUid: me.uid,
     fromEmail: myEmail,
-    fromName: myName,
+    fromName: myName.slice(0, 80),
     fromPhotoURL: myPhoto,
     requestedScope,
     status: "pending",
@@ -280,7 +312,11 @@ export async function createFriendInviteCode(
   const clean: Record<string, unknown> = { ...data };
   if (clean.fromPhotoURL === undefined) delete clean.fromPhotoURL;
 
-  await setDoc(doc(fs, "friendInviteCodes", id), clean);
+  await withFirestoreDeadline(
+    setDoc(doc(fs, "friendInviteCodes", id), clean),
+    45_000,
+    "연결 시간이 초과됐어요. 네트워크를 확인하고 다시 시도해 주세요.",
+  );
   return data;
 }
 

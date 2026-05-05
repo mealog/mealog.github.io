@@ -296,7 +296,7 @@ function LinkInviteCard() {
         링크로 초대 (카카오톡·문자)
       </h3>
       <p className="text-[11px] text-slate-400">
-        1회용 초대 링크를 만들면 상대가 Gmail을 몰라도 수락할 수 있어요. 링크는 약{" "}
+        1회용 초대 링크를 만들어 상대에게 보내면 링크로 수락할 수 있어요. 링크는 약{" "}
         <strong className="text-slate-200">{INVITE_VALID_HOURS}시간</strong> 동안 유효하고, 한 번
         수락되면 더 이상 쓸 수 없어요.
       </p>
