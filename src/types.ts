@@ -44,8 +44,18 @@ export const HEALTH_TYPE_LABELS: Record<HealthRecordType, string> = {
 export interface User {
   id: string;
   name: string;
-  /** 사용자 식별 색상 (HEX) */
+  /** 사용자 식별 색상 (HEX) — 이니셜 폴백 표시에 쓰임 */
   color: string;
+  /**
+   * 표시 아바타 종류.
+   * - "google": Firebase Auth 의 photoURL(구글 프로필 사진) 그대로 사용.
+   * - "upload": 사용자가 업로드한 사진(avatarDataUrl) 사용.
+   * - "preset": 앱이 제공하는 기본 샘플(아이콘/이모지, avatarDataUrl) 사용.
+   * - undefined: 기존 동작(구글 사진 있으면 그것, 없으면 이니셜).
+   */
+  avatarKind?: "google" | "upload" | "preset";
+  /** avatarKind === "upload" | "preset" 일 때의 96x96 JPEG base64 data URL (~10KB 이하). */
+  avatarDataUrl?: string;
   /** 생년월일 (선택) */
   birthYear?: number;
   /** 생년월일 YYYY-MM-DD (선택) — AI 분석에 나이 반영용 */

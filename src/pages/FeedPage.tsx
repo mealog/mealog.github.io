@@ -20,6 +20,7 @@ import { MealItemCard, MealItemEditDialog } from "../components/MealCard";
 import MealSocialBlock from "../components/MealSocialBlock";
 import FirebaseLoginCard from "../components/FirebaseLoginCard";
 import { formatKoDate } from "../lib/utils";
+import { resolveDisplayName, resolveDisplayPhotoURL } from "../lib/identity";
 import {
   deleteMealItem,
   saveMealItemPatch,
@@ -131,8 +132,8 @@ export default function FeedPage() {
     const out: FeedEntry[] = [];
     const myAuthor: FeedAuthor = {
       uid: myUid ?? "local-me",
-      name: myProfile?.name ?? user?.displayName ?? "나",
-      photoURL: user?.photoURL ?? undefined,
+      name: resolveDisplayName(myProfile, user),
+      photoURL: resolveDisplayPhotoURL(myProfile, user?.photoURL),
       color: myProfile?.color,
     };
     for (const m of myMeals ?? []) {

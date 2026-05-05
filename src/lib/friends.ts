@@ -22,9 +22,11 @@ import type {
   PublicProfile,
   Share,
   ShareScope,
+  User,
 } from "../types";
 import { getFirebaseAuth, getFirestoreDb } from "./firebaseApp";
 import { storedToMeal, type MealStored } from "./cloudSync";
+import { resolveDisplayName, resolveDisplayPhotoURL } from "./identity";
 
 export function normalizeEmail(s: string): string {
   return s.trim().toLowerCase();
@@ -65,15 +67,25 @@ function isEmptyScope(s: ShareScope): boolean {
 
 // ---- 공개 프로필 --------------------------------------------------------
 
-/** 로그인한 사용자의 공개 프로필을 Firestore 에 upsert (친구가 이름·이메일을 볼 수 있도록) */
-export async function upsertMyPublicProfile(u: FirebaseUser): Promise<void> {
+/**
+ * 로그인한 사용자의 공개 프로필을 Firestore 에 upsert.
+ *
+ * Dexie 의 localUser 가 주어지면 그 안의 닉네임/아바타(업로드/preset)를 우선
+ * 사용한다. 주어지지 않으면 기본값은 Firebase auth 의 displayName/photoURL.
+ */
+export async function upsertMyPublicProfile(
+  u: FirebaseUser,
+  localUser?: User | null,
+): Promise<void> {
   const fs = getFirestoreDb();
   const email = requireEmail(u);
+  const name = resolveDisplayName(localUser, u) || email;
+  const photoURL = resolveDisplayPhotoURL(localUser, u.photoURL);
   const data: PublicProfile = {
     uid: u.uid,
     email,
-    displayName: u.displayName ?? email,
-    photoURL: u.photoURL ?? undefined,
+    displayName: name,
+    photoURL,
     updatedAt: Date.now(),
   };
   const clean: Record<string, unknown> = { ...data };
@@ -93,6 +105,7 @@ export async function getPublicProfile(uid: string): Promise<PublicProfile | nul
 export async function sendFollowRequest(
   toEmailRaw: string,
   requestedScope: ShareScope,
+  localUser?: User | null,
 ): Promise<FollowRequest> {
   const me = requireUser();
   const myEmail = requireEmail(me);
@@ -122,12 +135,14 @@ export async function sendFollowRequest(
 
   const id = doc(collection(fs, "followRequests")).id;
   const now = Date.now();
+  const myName = resolveDisplayName(localUser, me) || myEmail;
+  const myPhoto = resolveDisplayPhotoURL(localUser, me.photoURL);
   const data: FollowRequest = {
     id,
     fromUid: me.uid,
     fromEmail: myEmail,
-    fromName: me.displayName ?? myEmail,
-    fromPhotoURL: me.photoURL ?? undefined,
+    fromName: myName,
+    fromPhotoURL: myPhoto,
     toEmail,
     requestedScope,
     status: "pending",
@@ -160,6 +175,7 @@ export async function rejectFollowRequest(reqId: string): Promise<void> {
 export async function acceptFollowRequest(
   reqId: string,
   finalScope: ShareScope,
+  localUser?: User | null,
 ): Promise<Share> {
   const me = requireUser();
   const myEmail = requireEmail(me);
@@ -177,14 +193,16 @@ export async function acceptFollowRequest(
 
   const sid = shareIdFor(me.uid, req.fromUid);
   const now = Date.now();
+  const myName = resolveDisplayName(localUser, me) || myEmail;
+  const myPhoto = resolveDisplayPhotoURL(localUser, me.photoURL);
   const share: Share = {
     id: sid,
     ownerUid: me.uid,
     viewerUid: req.fromUid,
     scope: finalScope,
     ownerEmail: myEmail,
-    ownerName: me.displayName ?? myEmail,
-    ownerPhotoURL: me.photoURL ?? undefined,
+    ownerName: myName,
+    ownerPhotoURL: myPhoto,
     viewerEmail: req.fromEmail,
     viewerName: req.fromName,
     viewerPhotoURL: req.fromPhotoURL,

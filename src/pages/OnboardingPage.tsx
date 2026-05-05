@@ -1,14 +1,25 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import FirebaseLoginCard from "../components/FirebaseLoginCard";
 import { afterUserDataMutation, db, patchSettings, uid } from "../lib/db";
 import { nextColor } from "../lib/utils";
+import { useAuth } from "../contexts/AuthContext";
+import type { User } from "../types";
 
 export default function OnboardingPage() {
+  const { user: authUser } = useAuth();
   const [displayName, setDisplayName] = useState("");
   const [color, setColor] = useState(() => nextColor([]));
   const [apiKey, setApiKey] = useState("");
+  const [useGoogleAvatar, setUseGoogleAvatar] = useState(true);
   const [busy, setBusy] = useState(false);
+
+  // 구글 로그인이 완료되면 이름 필드를 자동으로 채워 준다 — 사용자가 이미
+  // 입력하기 시작한 경우에는 덮어쓰지 않는다.
+  useEffect(() => {
+    if (!authUser) return;
+    setDisplayName((prev) => prev || authUser.displayName || "");
+  }, [authUser?.uid, authUser?.displayName]);
 
   async function finish() {
     const name = displayName.trim();
@@ -20,15 +31,19 @@ export default function OnboardingPage() {
     try {
       const now = Date.now();
       const id = uid();
-      await db.users.bulkPut([
-        {
-          id,
-          name,
-          color,
-          createdAt: now,
-          updatedAt: now,
-        },
-      ]);
+      const googleAvatarAvailable = !!authUser?.photoURL;
+      const newUser: User = {
+        id,
+        name,
+        color,
+        // 구글 로그인 + "구글 사진 사용" 체크 시 avatarKind="google".
+        // 체크 해제나 로그인 없이 진행 시 undefined — 이니셜 폴백.
+        avatarKind:
+          googleAvatarAvailable && useGoogleAvatar ? "google" : undefined,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await db.users.bulkPut([newUser]);
       afterUserDataMutation();
       await patchSettings({
         onboarded: true,
@@ -78,28 +93,52 @@ export default function OnboardingPage() {
       <section className="mb-6">
         <h2 className="mb-3 text-sm font-semibold text-slate-300">프로필</h2>
         <div className="flex items-center gap-2 rounded-2xl border border-slate-800 bg-slate-900/60 p-2">
-          <label className="relative cursor-pointer">
-            <span
-              className="flex h-11 w-11 items-center justify-center rounded-xl text-base font-bold text-white"
-              style={{ backgroundColor: color }}
-            >
-              {displayName.trim().slice(0, 1) || "?"}
-            </span>
-            <input
-              type="color"
-              value={color}
-              onChange={(e) => setColor(e.target.value)}
-              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          {authUser?.photoURL && useGoogleAvatar ? (
+            <img
+              src={authUser.photoURL}
+              alt=""
+              referrerPolicy="no-referrer"
+              className="h-11 w-11 rounded-xl border border-slate-800 object-cover"
             />
-          </label>
+          ) : (
+            <label className="relative cursor-pointer">
+              <span
+                className="flex h-11 w-11 items-center justify-center rounded-xl text-base font-bold text-white"
+                style={{ backgroundColor: color }}
+              >
+                {displayName.trim().slice(0, 1) || "?"}
+              </span>
+              <input
+                type="color"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              />
+            </label>
+          )}
           <input
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             placeholder="표시 이름"
             className="input border-transparent bg-transparent flex-1 px-2"
-            maxLength={10}
+            maxLength={16}
           />
         </div>
+        {authUser?.photoURL && (
+          <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs text-slate-400">
+            <input
+              type="checkbox"
+              checked={useGoogleAvatar}
+              onChange={(e) => setUseGoogleAvatar(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-700 bg-slate-900 accent-brand-500"
+            />
+            <span>구글 계정 프로필 사진을 사용할래요</span>
+          </label>
+        )}
+        <p className="mt-1 text-[11px] text-slate-500">
+          닉네임과 프로필 사진은 나중에{" "}
+          <span className="text-slate-400">건강 탭</span> 에서 언제든 바꿀 수 있어요.
+        </p>
       </section>
 
       <section className="mb-8">

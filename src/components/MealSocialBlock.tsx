@@ -7,7 +7,11 @@ import {
   type RefObject,
 } from "react";
 import { Heart, Loader2, MessageCircle, Pencil, Send, Trash2, X } from "lucide-react";
+import { useLiveQuery } from "dexie-react-hooks";
 import { useAuth } from "../contexts/AuthContext";
+import { db } from "../lib/db";
+import { usePrimaryUserId } from "../hooks/usePrimaryUserId";
+import { resolveDisplayName, resolveDisplayPhotoURL } from "../lib/identity";
 import {
   addComment,
   deleteComment,
@@ -522,12 +526,23 @@ function NewCommentInput({
   const taRef = useRef<HTMLTextAreaElement>(null);
   useAutoGrow(taRef, text);
 
+  // 댓글에 내 Dexie 프로필 기반 닉네임/아바타가 반영되도록 override 로 넘긴다.
+  const { user: authUser } = useAuth();
+  const myUserId = usePrimaryUserId();
+  const myProfile = useLiveQuery(
+    async () => (myUserId ? await db.users.get(myUserId) : undefined),
+    [myUserId],
+  );
+
   async function submit() {
     if (!text.trim()) return;
     setErr(null);
     setBusy(true);
     try {
-      await addComment(ownerUid, mealId, text, parentCommentId);
+      await addComment(ownerUid, mealId, text, parentCommentId, {
+        name: resolveDisplayName(myProfile, authUser),
+        photoURL: resolveDisplayPhotoURL(myProfile, authUser?.photoURL),
+      });
       setText("");
       onSent?.();
       if (!parentCommentId) taRef.current?.focus();

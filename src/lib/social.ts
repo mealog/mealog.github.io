@@ -119,6 +119,11 @@ export async function addComment(
   mealId: string,
   text: string,
   parentCommentId?: string,
+  /**
+   * 표시 정보 override — 호출자가 Dexie 프로필 기반의 닉네임/아바타를 이미
+   * 합성했다면 이걸 넘겨 준다. 없으면 Firebase auth 기본값을 쓴다.
+   */
+  authorOverride?: { name?: string; photoURL?: string },
 ): Promise<MealComment> {
   const trimmed = text.trim();
   if (!trimmed) throw new Error("댓글을 입력해 주세요.");
@@ -131,8 +136,8 @@ export async function addComment(
     ownerUid,
     mealId,
     authorUid: me.uid,
-    authorName: me.name,
-    authorPhotoURL: me.photoURL,
+    authorName: authorOverride?.name?.trim() || me.name,
+    authorPhotoURL: authorOverride?.photoURL || me.photoURL,
     text: trimmed,
     parentCommentId,
     createdAt: now,

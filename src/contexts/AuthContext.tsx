@@ -19,7 +19,7 @@ import {
   type User,
 } from "firebase/auth";
 import { ensureAutoCloudSyncListeners, requestAutoCloudSync } from "../lib/autoCloudSync";
-import { clearLocalProfileDataPreservingDevicePreferences, getSettings } from "../lib/db";
+import { clearLocalProfileDataPreservingDevicePreferences, db, getSettings } from "../lib/db";
 import { getFirebaseAuth, initFirebase, isFirebaseConfigured } from "../lib/firebaseApp";
 import { upsertMyPublicProfile } from "../lib/friends";
 
@@ -88,10 +88,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!firebaseReady || !user) return;
     ensureAutoCloudSyncListeners();
     requestAutoCloudSync({ immediate: true });
-    // 친구 기능: 본인 공개 프로필을 Firestore 에 upsert — 실패는 로그만 남기고 앱 플로우는 계속
-    void upsertMyPublicProfile(user).catch((e) => {
-      console.warn("[auth] publicProfile upsert 실패", e);
-    });
+    // 친구 기능: 본인 공개 프로필을 Firestore 에 upsert — 실패는 로그만 남기고 앱 플로우는 계속.
+    // Dexie 쪽 활성 사용자 프로필(닉네임·아바타) 이 있으면 그 값을 우선 반영.
+    void (async () => {
+      try {
+        const s = await getSettings();
+        const localUser = s?.activeUserId
+          ? await db.users.get(s.activeUserId)
+          : undefined;
+        await upsertMyPublicProfile(user, localUser ?? null);
+      } catch (e) {
+        console.warn("[auth] publicProfile upsert 실패", e);
+      }
+    })();
   }, [firebaseReady, user?.uid]);
 
   useEffect(() => {
