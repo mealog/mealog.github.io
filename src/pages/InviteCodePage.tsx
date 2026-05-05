@@ -8,6 +8,7 @@ import { usePrimaryUserId } from "../hooks/usePrimaryUserId";
 import { db } from "../lib/db";
 import { getFirestoreDb } from "../lib/firebaseApp";
 import { acceptFriendInviteCode } from "../lib/friends";
+import EmbeddedGoogleLoginNotice from "../components/EmbeddedGoogleLoginNotice";
 import type { FriendInviteCode, ShareScope } from "../types";
 
 const CALENDAR_ONLY_SCOPE: ShareScope = { calendar: true, health: false };
@@ -67,6 +68,7 @@ export default function InviteCodePage() {
         <p className="text-sm text-slate-300">
           초대를 확인하려면 Google 계정으로 로그인해 주세요. 링크는 로그인한 뒤에도 다시 열 수 있어요.
         </p>
+        <EmbeddedGoogleLoginNotice />
         <button
           type="button"
           disabled={signInBusy}

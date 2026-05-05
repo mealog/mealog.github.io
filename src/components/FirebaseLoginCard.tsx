@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Cloud, Loader2, LogIn, LogOut } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
+import EmbeddedGoogleLoginNotice from "./EmbeddedGoogleLoginNotice";
 
 /** 메인 등 — Firebase 미연결 시 Google 로그인 유도 */
 export default function FirebaseLoginCard() {
@@ -60,6 +61,7 @@ export default function FirebaseLoginCard() {
       <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-sky-100">
         <Cloud size={16} className="text-sky-400" /> 데이터 동기화
       </h2>
+      <EmbeddedGoogleLoginNotice />
       <button
         type="button"
         disabled={signInBusy}

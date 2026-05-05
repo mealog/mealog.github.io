@@ -19,6 +19,7 @@ import {
   type User,
 } from "firebase/auth";
 import { ensureAutoCloudSyncListeners, requestAutoCloudSync } from "../lib/autoCloudSync";
+import { isEmbeddedBrowserLikelyBlockingGoogleOAuth } from "../lib/inAppBrowser";
 import { clearLocalProfileDataPreservingDevicePreferences, db, getSettings } from "../lib/db";
 import { getFirebaseAuth, initFirebase, isFirebaseConfigured } from "../lib/firebaseApp";
 import { upsertMyPublicProfile } from "../lib/friends";
@@ -176,6 +177,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = useCallback(async () => {
     setSignInError(null);
+    if (typeof navigator !== "undefined" && isEmbeddedBrowserLikelyBlockingGoogleOAuth()) {
+      setSignInError(
+        "Google은 카카오톡·라인 등 인앱 브라우저에서 로그인을 막는 경우가 많아요. " +
+          "화면 안내에서 «Chrome / Safari에서 열기» 또는 주소 복사로 기본 브라우저를 연 뒤 다시 시도해 주세요.",
+      );
+      return;
+    }
     setSignInBusy(true);
     const resetBusyLater = window.setTimeout(() => setSignInBusy(false), 15_000);
     try {

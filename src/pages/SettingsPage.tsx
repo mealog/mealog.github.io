@@ -27,6 +27,7 @@ import { normalizeTheme, persistTheme } from "../lib/theme";
 import { THEME_IDS, THEME_LABELS, type ThemeId, type User } from "../types";
 import { cls } from "../lib/utils";
 import { wipeMyCloudData } from "../lib/wipeCloud";
+import EmbeddedGoogleLoginNotice from "../components/EmbeddedGoogleLoginNotice";
 import ProfileIdentitySection from "../components/ProfileIdentitySection";
 
 export default function SettingsPage() {
@@ -186,6 +187,7 @@ export default function SettingsPage() {
 
         {firebaseReady && !authLoading && !user && (
           <div className="space-y-2">
+            <EmbeddedGoogleLoginNotice />
             <button
               type="button"
               disabled={signInBusy}
