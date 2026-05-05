@@ -159,10 +159,10 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/dmThreads/$(t)).data;
     }
     match /dmThreads/{threadId} {
+      // 목록 쿼리(array-contains + orderBy): 일부 문서만 size!=2 여도 쿼리 전체가 거부될 수 있음 → 읽기는 참가자만 검증
       allow read: if signedIn()
         && resource.data.participantUids is list
-        && resource.data.participantUids.size() == 2
-        && me() in resource.data.participantUids;
+        && resource.data.participantUids.hasAny([me()]);
       allow create: if signedIn()
         && dmPairOk(request.resource.data.participantUids)
         && threadId == request.resource.data.participantUids[0] + '_' + request.resource.data.participantUids[1]
@@ -185,8 +185,7 @@ service cloud.firestore {
     match /dmThreads/{threadId}/messages/{mid} {
       allow read: if signedIn()
         && dmThreadDoc(threadId).participantUids is list
-        && dmThreadDoc(threadId).participantUids.size() == 2
-        && me() in dmThreadDoc(threadId).participantUids;
+        && dmThreadDoc(threadId).participantUids.hasAny([me()]);
       allow create: if signedIn()
         && dmThreadDoc(threadId).participantUids is list
         && dmThreadDoc(threadId).participantUids.size() == 2

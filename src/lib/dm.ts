@@ -98,9 +98,16 @@ export function subscribeMyDmThreads(
   cb: (threads: DmThreadDoc[]) => void,
   onErr?: (e: unknown) => void,
 ): Unsubscribe {
+  const authUid = getFirebaseAuth().currentUser?.uid;
+  const uid = authUid && myUid === authUid ? myUid : authUid ?? "";
+  if (!uid) {
+    cb([]);
+    return () => {};
+  }
+
   const q = query(
     threadsCol(),
-    where("participantUids", "array-contains", myUid),
+    where("participantUids", "array-contains", uid),
     orderBy("updatedAt", "desc"),
     limit(40),
   );
