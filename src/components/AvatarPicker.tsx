@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Camera, Check, Image as ImageIcon, Loader2, Sparkles, X } from "lucide-react";
 import type { User as FirebaseUser } from "firebase/auth";
 import { AVATAR_PRESETS, blobToAvatarDataUrl, renderPresetAvatarDataUrl, type AvatarPreset } from "../lib/avatar";
@@ -96,21 +97,33 @@ export default function AvatarPicker({ authUser, currentKind, onClose, onSave }:
     }
   }
 
-  return (
-    <div
-      className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-black/60 backdrop-blur-sm"
-      onClick={(ev) => {
-        if (ev.target === ev.currentTarget) onClose();
-      }}
-    >
-      {/* min-h 와 패딩으로 상단 헤더/노치에 가려지지 않게 */}
-      <div className="flex min-h-[100dvh] items-end justify-center px-4 py-[max(1rem,env(safe-area-inset-top,0px))] pb-[max(1rem,env(safe-area-inset-bottom,0px))] sm:items-center sm:py-8">
+  const overlay = (
+    <div className="fixed inset-0 z-[200] flex items-end justify-center sm:items-center sm:p-4">
+      <button
+        type="button"
+        aria-label="닫기"
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
         <div
-          className="max-h-[min(85dvh,640px)] w-full max-w-md overflow-y-auto rounded-t-2xl border border-slate-800 bg-slate-950 p-4 shadow-xl sm:max-h-[min(90vh,680px)] sm:rounded-2xl"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="avatar-picker-title"
+          className="relative z-[1] flex max-h-[min(92dvh,900px)] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl border border-slate-700 bg-slate-950 shadow-2xl sm:max-h-[min(85vh,800px)] sm:rounded-2xl"
+          style={{
+            paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))",
+          }}
           onClick={(e) => e.stopPropagation()}
         >
-        <header className="mb-3 flex items-center justify-between">
-          <h2 className="text-base font-bold text-slate-100">프로필 사진 변경</h2>
+        <header
+          className="flex shrink-0 items-center justify-between border-b border-slate-800 px-4 py-3"
+          style={{
+            paddingTop: "max(0.75rem, env(safe-area-inset-top, 0px))",
+          }}
+        >
+          <h2 id="avatar-picker-title" className="text-base font-bold text-slate-100">
+            프로필 사진 변경
+          </h2>
           <button
             type="button"
             onClick={onClose}
@@ -121,6 +134,7 @@ export default function AvatarPicker({ authUser, currentKind, onClose, onSave }:
           </button>
         </header>
 
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 pt-2">
         {err && (
           <p className="mb-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
             {err}
@@ -230,8 +244,11 @@ export default function AvatarPicker({ authUser, currentKind, onClose, onSave }:
             <Loader2 size={14} className="animate-spin" /> 저장 중…
           </div>
         )}
-      </div>
-      </div>
+        </div>
+        </div>
     </div>
   );
+
+  if (typeof document === "undefined") return null;
+  return createPortal(overlay, document.body);
 }

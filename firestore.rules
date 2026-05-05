@@ -96,18 +96,33 @@ service cloud.firestore {
       allow get: if signedIn();
       allow list: if signedIn() && resource.data.fromUid == me();
 
+      // 토큰에 email 이 없거나 일부 환경에서 클레임이 비어 있는 경우(create / accept 허용)
+      function inviteIssuerEmailMatches() {
+        let c = request.auth.token.email == null || request.auth.token.email == '';
+        return request.resource.data.fromEmail is string
+          && request.resource.data.fromEmail.size() > 0
+          && request.resource.data.fromEmail.size() <= 320
+          && (c || request.resource.data.fromEmail == request.auth.token.email);
+      }
+      function inviteAcceptorEmailMatches() {
+        let c = request.auth.token.email == null || request.auth.token.email == '';
+        return request.resource.data.usedByEmail is string
+          && request.resource.data.usedByEmail.size() > 0
+          && (c || request.resource.data.usedByEmail == request.auth.token.email);
+      }
+
       allow create: if signedIn()
         && codeId == request.resource.data.id
         && request.resource.data.fromUid == me()
-        && request.resource.data.fromEmail == myEmail()
+        && inviteIssuerEmailMatches()
         && request.resource.data.fromName is string
         && request.resource.data.fromName.size() > 0
         && request.resource.data.fromName.size() <= 80
         && request.resource.data.requestedScope.calendar == true
         && request.resource.data.requestedScope.health == false
         && request.resource.data.status == 'pending'
-        && request.resource.data.createdAt is int
-        && request.resource.data.expiresAt is int
+        && request.resource.data.createdAt is number
+        && request.resource.data.expiresAt is number
         && request.resource.data.expiresAt > request.resource.data.createdAt
         && request.resource.data.expiresAt
              <= request.resource.data.createdAt + duration.value(72, 'h');
@@ -135,13 +150,13 @@ service cloud.firestore {
             request.resource.data.status == 'used'
             && me() != resource.data.fromUid
             && request.resource.data.usedByUid == me()
-            && request.resource.data.usedByEmail == myEmail()
-            && request.resource.data.usedAt is int
+            && inviteAcceptorEmailMatches()
+            && request.resource.data.usedAt is number
           )
           || (
             request.resource.data.status == 'revoked'
             && me() == resource.data.fromUid
-            && request.resource.data.revokedAt is int
+            && request.resource.data.revokedAt is number
           )
         );
     }
