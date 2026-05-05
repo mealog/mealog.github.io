@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useLiveQuery } from "dexie-react-hooks";
 import {
   Check,
   ChevronRight,
@@ -9,15 +10,20 @@ import {
   Loader2,
   Mail,
   Send,
+  Share2,
   Trash2,
   UserPlus,
   Users,
   X,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
+import { usePrimaryUserId } from "../hooks/usePrimaryUserId";
 import {
   acceptFollowRequest,
+  buildFriendInviteLink,
   cancelFollowRequest,
+  createFriendInviteCode,
+  FRIEND_INVITE_TTL_MS,
   isGmailAddress,
   rejectFollowRequest,
   removeShare,
@@ -28,6 +34,7 @@ import {
   subscribeOutgoingShares,
   updateOutgoingScope,
 } from "../lib/friends";
+import { db } from "../lib/db";
 import type { FollowRequest, Share, ShareScope } from "../types";
 import FirebaseLoginCard from "../components/FirebaseLoginCard";
 import { cls } from "../lib/utils";
@@ -273,6 +280,7 @@ function FriendsTab({
 
   return (
     <>
+      <LinkInviteCard />
       <SendRequestCard />
       <section className="space-y-3">
         {error && <ErrorBanner message={error} />}
@@ -281,7 +289,7 @@ function FriendsTab({
         )}
         {rows?.length === 0 && (
           <p className="card p-4 text-center text-xs text-slate-500">
-            아직 친구가 없어요. 위에서 이메일로 팔로우 신청을 보내보세요.
+            아직 친구가 없어요. 링크 초대 또는 이메일로 팔로우 신청을 보내보세요.
           </p>
         )}
         {rows?.map((r) => (
@@ -307,6 +315,110 @@ function ErrorBanner({ message }: { message: string }) {
 
 // 건강 기록은 민감 정보라 공유 불가. scope.health 는 항상 false 로 강제한다.
 const CALENDAR_ONLY_SCOPE: ShareScope = { calendar: true, health: false };
+
+const INVITE_VALID_HOURS = Math.round(FRIEND_INVITE_TTL_MS / (60 * 60 * 1000));
+
+function LinkInviteCard() {
+  const myUserId = usePrimaryUserId();
+  const localUser = useLiveQuery(
+    async () => (myUserId ? await db.users.get(myUserId) : undefined),
+    [myUserId],
+  );
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [lastLink, setLastLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function generate() {
+    setErr(null);
+    setBusy(true);
+    try {
+      const inv = await createFriendInviteCode(localUser ?? undefined, CALENDAR_ONLY_SCOPE);
+      setLastLink(buildFriendInviteLink(inv.id));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copyLink() {
+    if (!lastLink) return;
+    try {
+      await navigator.clipboard.writeText(lastLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      prompt("링크를 복사하세요", lastLink);
+    }
+  }
+
+  async function shareNative() {
+    if (!lastLink) return;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "헬스헬스 친구 초대",
+          text: "내 식단을 볼 수 있도록 초대했어요. 링크에서 수락해 주세요.",
+          url: lastLink,
+        });
+      } else {
+        await copyLink();
+      }
+    } catch (e) {
+      if ((e as { name?: string })?.name !== "AbortError") {
+        await copyLink();
+      }
+    }
+  }
+
+  return (
+    <section className="card space-y-3 p-4">
+      <h3 className="text-sm font-semibold text-slate-200">
+        <Share2 size={14} className="mb-0.5 mr-1 inline text-brand-400" />
+        링크로 초대 (카카오톡·문자)
+      </h3>
+      <p className="text-[11px] text-slate-400">
+        1회용 초대 링크를 만들면 상대가 Gmail을 몰라도 수락할 수 있어요. 링크는 약{" "}
+        <strong className="text-slate-200">{INVITE_VALID_HOURS}시간</strong> 동안 유효하고, 한 번
+        수락되면 더 이상 쓸 수 없어요.
+      </p>
+      <button
+        type="button"
+        onClick={() => void generate()}
+        disabled={busy}
+        className="btn-primary w-full py-2.5 text-sm disabled:opacity-60"
+      >
+        {busy ? <Loader2 size={16} className="animate-spin" /> : <Link2 size={16} />}
+        초대 링크 만들기
+      </button>
+      {err && (
+        <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+          {err}
+        </p>
+      )}
+      {lastLink && (
+        <div className="space-y-2 rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3 text-xs text-emerald-100/90">
+          <p className="font-medium">아래 링크를 보내 주세요.</p>
+          <p className="break-all rounded-lg bg-slate-900/60 px-2 py-1.5 font-mono text-[11px] text-slate-300">
+            {lastLink}
+          </p>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => void copyLink()} className="btn-secondary flex-1 py-2 text-xs">
+              {copied ? <Check size={12} /> : <Copy size={12} />}
+              {copied ? "복사됨" : "복사"}
+            </button>
+            {"share" in navigator && typeof navigator.share === "function" ? (
+              <button type="button" onClick={() => void shareNative()} className="btn-secondary flex-1 py-2 text-xs">
+                <Share2 size={12} /> 공유
+              </button>
+            ) : null}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
 
 function SendRequestCard() {
   const [email, setEmail] = useState("");
@@ -343,9 +455,7 @@ function SendRequestCard() {
       </h3>
       <p className="text-[11px] text-slate-400">
         상대가 수락하면 그 사람의 <strong className="text-slate-200">식단(달력) 기록</strong>을 볼 수 있어요.
-        <span className="mt-1 block text-slate-500">
-          건강 정보는 민감 정보라 앱 전체에서 친구와 공유되지 않아요. · Gmail 주소만 가능
-        </span>
+        <span className="mt-1 block text-slate-500">Gmail 주소만 신청할 수 있어요.</span>
       </p>
       <input
         type="email"
@@ -363,7 +473,7 @@ function SendRequestCard() {
         </p>
       )}
       <div className="rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2 text-[11px] text-slate-400">
-        공개 범위: <strong className="text-slate-200">식단(달력)</strong> · 건강 기록은 공유되지 않습니다.
+        공개 범위: <strong className="text-slate-200">식단(달력)</strong>
       </div>
       <button
         onClick={submit}
@@ -681,12 +791,8 @@ function IncomingCard({ req }: { req: FollowRequest }) {
           <p className="truncate text-xs text-slate-500">{req.fromEmail}</p>
         </div>
       </div>
-      <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-3 text-[11px] text-slate-400">
-        <p>
-          <Eye size={11} className="mb-0.5 mr-1 inline" />
-          수락하면 내 <strong className="text-slate-200">식단(달력) 기록</strong>만 공개돼요.
-        </p>
-        <p className="mt-1 text-slate-500">건강 기록은 앱 전체에서 친구에게 공유되지 않아요.</p>
+      <div className="rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2 text-[11px] text-slate-400">
+        공개 범위: <strong className="text-slate-200">식단(달력)</strong>
       </div>
       {err && (
         <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
@@ -780,8 +886,8 @@ function OutgoingCard({ req }: { req: FollowRequest }) {
         <p className="text-xs text-slate-400">대상 이메일</p>
         <p className="truncate text-sm font-medium text-slate-100">{req.toEmail}</p>
       </div>
-      <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-3 text-[11px] text-slate-400">
-        수락되면 상대의 <strong className="text-slate-200">식단(달력) 기록</strong>을 볼 수 있어요.
+      <div className="rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2 text-[11px] text-slate-400">
+        공개 범위: <strong className="text-slate-200">식단(달력)</strong>
       </div>
       <div className="flex gap-2">
         <button onClick={copy} className="btn-secondary flex-1 py-2 text-xs">
