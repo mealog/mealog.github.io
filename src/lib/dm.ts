@@ -7,8 +7,8 @@ import {
   orderBy,
   query,
   setDoc,
+  updateDoc,
   where,
-  writeBatch,
   type Unsubscribe,
 } from "firebase/firestore";
 import type { DmMessageDoc, DmThreadDoc } from "../types";
@@ -43,7 +43,7 @@ function isPermissionDenied(e: unknown): boolean {
 }
 
 /** DM 전송·스레드 생성 실패 시 사용자에게 보여 줄 메시지 */
-function dmFirestoreUserMessage(e: unknown): string {
+function dmFirestoreUserMessage(e: unknown, hint?: "messageDoc" | "threadMeta"): string {
   const code = String((e as { code?: string })?.code ?? "");
   const raw = firebaseErrText(e);
   if (
@@ -52,6 +52,12 @@ function dmFirestoreUserMessage(e: unknown): string {
     /insufficient permissions/i.test(raw) ||
     /missing or insufficient permissions/i.test(raw)
   ) {
+    if (hint === "threadMeta") {
+      return "대화 목록을 갱신하지 못했어요. Firestore 규칙(dmThreads 업데이트) 또는 네트워크를 확인해 주세요.";
+    }
+    if (hint === "messageDoc") {
+      return "메시지 저장이 거절됐어요. 스레드 참가자·Firestore 규칙(dmThreads/…/messages)을 확인해 주세요. 로그인 계정이 이 대화방 참가자와 같은지도 확인해 주세요.";
+    }
     return "메시지를 저장하지 못했어요. 로그인을 확인하고 잠시 후 다시 시도해 주세요. 계속되면 로그아웃 후 다시 로그인해 보세요.";
   }
   if (code === "unavailable" || code === "unauthenticated") {
@@ -65,7 +71,7 @@ function dmFirestoreUserMessage(e: unknown): string {
 
 /** alert 등 UI 용 — 위험한 원문 노출 줄임 */
 export function dmErrorMessageForUi(e: unknown): string {
-  return dmFirestoreUserMessage(e);
+  return dmFirestoreUserMessage(e, undefined);
 }
 
 /** threadId 규약: uid 문자열 순서 오름차순 [a,b] 일 때 `${a}_${b}` */
@@ -220,31 +226,35 @@ export async function sendDmMessage(threadId: string, rawText: string): Promise<
   const msgRef = doc(collection(fs, "dmThreads", threadId, "messages"));
   const now = Date.now();
 
-  const runBatch = async () => {
-    const batch = writeBatch(fs);
-    batch.set(msgRef, { senderUid: me, text: trimmed, createdAt: now });
-    batch.update(tref, {
-      lastText: trimmed.slice(0, 280),
-      lastSenderUid: me,
-      updatedAt: now,
-    });
-    await batch.commit();
+  const msgPayload = { senderUid: me, text: trimmed, createdAt: now };
+  const threadPayload = {
+    lastText: trimmed.slice(0, 280),
+    lastSenderUid: me,
+    updatedAt: now,
   };
 
-  try {
-    await runBatch();
-  } catch (e) {
-    if (isPermissionDenied(e)) {
-      const auth = getFirebaseAuth();
-      await auth.currentUser?.getIdToken(true);
-      try {
-        await runBatch();
-      } catch (e2) {
-        throw new Error(dmFirestoreUserMessage(e2));
-      }
-    } else {
-      throw new Error(dmFirestoreUserMessage(e));
+  /** permission-denied 이면 토큰 갱신 후 한 번 더 시도 */
+  const withPermissionRetry = async (fn: () => Promise<void>) => {
+    try {
+      await fn();
+    } catch (e) {
+      if (!isPermissionDenied(e)) throw e;
+      await getFirebaseAuth().currentUser?.getIdToken(true);
+      await fn();
     }
+  };
+
+  // 배치 대신 순차 저장 — 실패 시 규칙이 메시지 경로인지 스레드 메타인지 안내를 나눔
+  try {
+    await withPermissionRetry(() => setDoc(msgRef, msgPayload));
+  } catch (e) {
+    throw new Error(dmFirestoreUserMessage(e, isPermissionDenied(e) ? "messageDoc" : undefined));
+  }
+
+  try {
+    await withPermissionRetry(() => updateDoc(tref, threadPayload));
+  } catch (e) {
+    throw new Error(dmFirestoreUserMessage(e, isPermissionDenied(e) ? "threadMeta" : undefined));
   }
 
   try {

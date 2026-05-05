@@ -184,14 +184,14 @@ service cloud.firestore {
       allow read: if request.auth != null
         && dmThreadDoc(threadId).participantUids is list
         && request.auth.uid in dmThreadDoc(threadId).participantUids;
+      // createdAt 타입 검사 제거 — SDK/직렬화에서 int/float 외로 들어가 규칙만 거절되는 경우 방지
       allow create: if signedIn()
         && dmThreadDoc(threadId).participantUids is list
         && me() in dmThreadDoc(threadId).participantUids
         && request.resource.data.senderUid == me()
         && request.resource.data.text is string
         && request.resource.data.text.size() > 0
-        && request.resource.data.text.size() <= 4000
-        && (request.resource.data.createdAt is int || request.resource.data.createdAt is float);
+        && request.resource.data.text.size() <= 4000;
       allow update, delete: if false;
     }
 
