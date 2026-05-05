@@ -13,7 +13,29 @@ import {
 } from "firebase/firestore";
 import type { DmMessageDoc, DmThreadDoc } from "../types";
 import { getFirebaseAuth, getFirestoreDb } from "./firebaseApp";
-import { isCalendarConnectedPairFromServer, permissionDeniedMessage } from "./friends";
+import { isCalendarConnectedPairFromServer } from "./friends";
+
+function isPermissionDenied(e: unknown): boolean {
+  const code = (e as { code?: string })?.code;
+  const raw = e instanceof Error ? e.message : String(e);
+  return code === "permission-denied" || /insufficient permissions/i.test(raw);
+}
+
+/** DM 전송·스레드 생성 실패 시 사용자에게 보여 줄 메시지 */
+function dmFirestoreUserMessage(e: unknown): string {
+  const code = (e as { code?: string })?.code;
+  const raw = e instanceof Error ? e.message : String(e);
+  if (code === "permission-denied" || /insufficient permissions/i.test(raw)) {
+    return "메시지를 저장하지 못했어요. 로그인을 확인하고 잠시 후 다시 시도해 주세요. 계속되면 로그아웃 후 다시 로그인해 보세요.";
+  }
+  if (code === "unavailable" || code === "unauthenticated") {
+    return "연결 또는 로그인 상태를 확인해 주세요.";
+  }
+  if (code === "deadline-exceeded" || code === "resource-exhausted") {
+    return "요청이 지연됐어요. 네트워크 상태를 확인한 뒤 다시 시도해 주세요.";
+  }
+  return raw.length > 160 ? `${raw.slice(0, 158)}…` : raw;
+}
 
 /** threadId 규약: uid 문자열 순서 오름차순 [a,b] 일 때 `${a}_${b}` */
 export function dmThreadIdForPair(uidA: string, uidB: string): string {
@@ -52,13 +74,21 @@ export async function ensureDmThreadWith(peerUid: string): Promise<string> {
     }
     const now = Date.now();
     const p = participantsTuple(me, peerUid);
-    await setDoc(ref, {
-      participantUids: p,
-      lastText: "",
-      lastSenderUid: "",
-      updatedAt: now,
-      createdAt: now,
-    });
+    try {
+      await setDoc(ref, {
+        participantUids: p,
+        lastText: "",
+        lastSenderUid: "",
+        updatedAt: now,
+        createdAt: now,
+      });
+    } catch (e) {
+      throw new Error(
+        isPermissionDenied(e)
+          ? "대화방을 만들 수 없어요. 친구와 달력 공유가 되어 있는지 확인한 뒤 다시 시도해 주세요."
+          : dmFirestoreUserMessage(e),
+      );
+    }
   }
   return tid;
 }
@@ -138,23 +168,34 @@ export async function sendDmMessage(threadId: string, rawText: string): Promise<
 
   const msgRef = doc(collection(fs, "dmThreads", threadId, "messages"));
   const now = Date.now();
-  const batch = writeBatch(fs);
-  batch.set(msgRef, { senderUid: me, text: trimmed, createdAt: now });
-  batch.update(tref, {
-    lastText: trimmed.slice(0, 280),
-    lastSenderUid: me,
-    updatedAt: now,
-  });
-  try {
+
+  const runBatch = async () => {
+    const batch = writeBatch(fs);
+    batch.set(msgRef, { senderUid: me, text: trimmed, createdAt: now });
+    batch.update(tref, {
+      lastText: trimmed.slice(0, 280),
+      lastSenderUid: me,
+      updatedAt: now,
+    });
     await batch.commit();
+  };
+
+  try {
+    await runBatch();
   } catch (e) {
-    const code = (e as { code?: string })?.code;
-    const hint = permissionDeniedMessage(e);
-    if (code && code !== "permission-denied") {
-      throw new Error(`${hint} (${code})`);
+    if (isPermissionDenied(e)) {
+      const auth = getFirebaseAuth();
+      await auth.currentUser?.getIdToken(true);
+      try {
+        await runBatch();
+      } catch (e2) {
+        throw new Error(dmFirestoreUserMessage(e2));
+      }
+    } else {
+      throw new Error(dmFirestoreUserMessage(e));
     }
-    throw new Error(hint);
   }
+
   try {
     await setDoc(dmReadDoc(me, threadId), { threadId, lastReadAt: now }, { merge: true });
   } catch (e) {
@@ -166,14 +207,18 @@ export async function sendDmMessage(threadId: string, rawText: string): Promise<
 export async function markDmThreadReadForMe(threadId: string): Promise<void> {
   const me = getFirebaseAuth().currentUser?.uid;
   if (!me) return;
-  await setDoc(
-    dmReadDoc(me, threadId),
-    {
-      threadId,
-      lastReadAt: Date.now(),
-    },
-    { merge: true },
-  );
+  try {
+    await setDoc(
+      dmReadDoc(me, threadId),
+      {
+        threadId,
+        lastReadAt: Date.now(),
+      },
+      { merge: true },
+    );
+  } catch (e) {
+    console.warn("[dm] mark read failed", e);
+  }
 }
 
 /** 스레드에 내가 받은 메시지가 아직 안 읽은 상태인지 — lastRead 보다 상대방이 새로 보냈으면 unread */

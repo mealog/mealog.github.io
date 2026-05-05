@@ -173,15 +173,14 @@ service cloud.firestore {
         )
         && request.resource.data.lastText is string
         && request.resource.data.lastSenderUid is string
-        && request.resource.data.updatedAt is int
-        && request.resource.data.createdAt is int;
-      // 새 방 만들 때만 달력 연결 검사 — 기존 방에서 메시지/미리보기 갱신은 참가자면 허용
-      // (shares 규칙과 클라 캐시 불일치로 permission-denied 가 반복되는 문제 방지)
+        && (request.resource.data.updatedAt is int || request.resource.data.updatedAt is float)
+        && (request.resource.data.createdAt is int || request.resource.data.createdAt is float);
+      // 참가자만, 미리보기 필드만 변경 허용 — participantUids 배열 == 비교 실패(타입/순서 이슈) 방지
       allow update: if signedIn()
         && resource.data.participantUids is list
         && resource.data.participantUids.size() == 2
         && me() in resource.data.participantUids
-        && request.resource.data.participantUids == resource.data.participantUids;
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastText','lastSenderUid','updatedAt']);
     }
     match /dmThreads/{threadId}/messages/{mid} {
       allow read: if signedIn()
