@@ -5,6 +5,7 @@ import { ArrowLeft, Loader2, Send } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { getPublicProfile, isCalendarConnectedPairFromServer } from "../lib/friends";
 import {
+  dmErrorMessageForUi,
   markDmThreadReadForMe,
   sendDmMessage,
   subscribeDmMessages,
@@ -82,7 +83,7 @@ export default function DmChatPage() {
       await sendDmMessage(threadId, text);
       setText("");
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e));
+      alert(dmErrorMessageForUi(e));
     } finally {
       setSending(false);
     }

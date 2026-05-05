@@ -15,9 +15,25 @@ import type { DmMessageDoc, DmThreadDoc } from "../types";
 import { getFirebaseAuth, getFirestoreDb } from "./firebaseApp";
 import { isCalendarConnectedPairFromServer } from "./friends";
 
+/** Firebase/Firestore 에서 넘어오는 메시지 문자열 (객체 래핑·커스텀 에러 대응) */
+function firebaseErrText(e: unknown): string {
+  if (e instanceof Error && e.message.trim()) return e.message;
+  const o = e as Record<string, unknown>;
+  if (typeof o?.message === "string" && o.message.trim()) return o.message;
+  const nested = o?.customData as Record<string, unknown> | undefined;
+  if (nested && typeof nested.message === "string") return nested.message;
+  try {
+    const s = JSON.stringify(e);
+    if (s && s !== "{}") return s;
+  } catch {
+    /* ignore */
+  }
+  return String(e);
+}
+
 function isPermissionDenied(e: unknown): boolean {
   const code = String((e as { code?: string })?.code ?? "");
-  const raw = e instanceof Error ? e.message : String(e);
+  const raw = firebaseErrText(e);
   return (
     code === "permission-denied" ||
     code.endsWith("/permission-denied") ||
@@ -29,7 +45,7 @@ function isPermissionDenied(e: unknown): boolean {
 /** DM 전송·스레드 생성 실패 시 사용자에게 보여 줄 메시지 */
 function dmFirestoreUserMessage(e: unknown): string {
   const code = String((e as { code?: string })?.code ?? "");
-  const raw = e instanceof Error ? e.message : String(e);
+  const raw = firebaseErrText(e);
   if (
     code === "permission-denied" ||
     code.endsWith("/permission-denied") ||
@@ -45,6 +61,11 @@ function dmFirestoreUserMessage(e: unknown): string {
     return "요청이 지연됐어요. 네트워크 상태를 확인한 뒤 다시 시도해 주세요.";
   }
   return raw.length > 160 ? `${raw.slice(0, 158)}…` : raw;
+}
+
+/** alert 등 UI 용 — 위험한 원문 노출 줄임 */
+export function dmErrorMessageForUi(e: unknown): string {
+  return dmFirestoreUserMessage(e);
 }
 
 /** threadId 규약: uid 문자열 순서 오름차순 [a,b] 일 때 `${a}_${b}` */

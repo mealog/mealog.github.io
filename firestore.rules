@@ -175,11 +175,10 @@ service cloud.firestore {
         && request.resource.data.lastSenderUid is string
         && (request.resource.data.updatedAt is int || request.resource.data.updatedAt is float)
         && (request.resource.data.createdAt is int || request.resource.data.createdAt is float);
-      // 참가자만 — participantUids·createdAt 변경 금지 (hasOnly 나열은 SDK/병합 차이로 거절되는 경우가 있음)
+      // 참가자면 미리보기·메타 갱신 허용 — diff/필드 나열은 거절 원인이 되기 쉬움
       allow update: if signedIn()
         && resource.data.participantUids is list
-        && me() in resource.data.participantUids
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['participantUids','createdAt']);
+        && me() in resource.data.participantUids;
     }
     match /dmThreads/{threadId}/messages/{mid} {
       allow read: if request.auth != null

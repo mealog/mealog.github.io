@@ -4,6 +4,7 @@ import { ArrowLeft, Loader2, MessageCircle } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { getPublicProfile } from "../lib/friends";
 import {
+  dmErrorMessageForUi,
   ensureDmThreadWith,
   otherParticipantUid,
   subscribeDmReadMap,
@@ -95,7 +96,7 @@ export default function MessagesPage() {
         navigate(`/messages/${tid}`, { replace: true });
       } catch (e) {
         handledPeerRef.current = null;
-        alert(e instanceof Error ? e.message : String(e));
+        alert(dmErrorMessageForUi(e));
         navigate("/messages", { replace: true });
       }
     })();
