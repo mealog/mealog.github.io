@@ -331,7 +331,19 @@ export function subscribeMyDmThreads(
     }, 6000);
   };
 
-  const deliver = (snap: QuerySnapshot) => {
+  /**
+   * onSnapshot 이 로컬 캐시 빈 결과를 먼저 보내면, prefetch/웜업보다 앞서 빈 목록으로 UI를 덮는다.
+   * getDocs 웜업·이후 서버 스냅샷은 그대로 전달한다(진짜로 대화 0건인 경우 포함).
+   */
+  const applySnapshot = (snap: QuerySnapshot, source: "listener" | "warmup") => {
+    if (
+      source === "listener" &&
+      snap.empty &&
+      snap.metadata.fromCache &&
+      !snap.metadata.hasPendingWrites
+    ) {
+      return;
+    }
     cancelSnapshotWatchdog();
     hadSuccess = true;
     authRetryCount = 0;
@@ -352,7 +364,7 @@ export function subscribeMyDmThreads(
         }
         const snap = await getDocs(q);
         if (stopped) return;
-        deliver(snap);
+        applySnapshot(snap, "warmup");
         return;
       } catch (e) {
         if (stopped) return;
@@ -364,7 +376,7 @@ export function subscribeMyDmThreads(
       await getFirebaseAuth().currentUser?.getIdToken(true).catch(() => {});
       const snap = await getDocsFromServer(q);
       if (stopped) return;
-      deliver(snap);
+      applySnapshot(snap, "warmup");
     } catch (e) {
       if (!stopped) {
         console.warn("[dm] getDocsFromServer thread list fallback", e);
@@ -377,7 +389,7 @@ export function subscribeMyDmThreads(
     cancelSnapshotWatchdog();
     unsub = onSnapshot(
       q,
-      (snap) => deliver(snap),
+      (snap) => applySnapshot(snap, "listener"),
       async (err) => {
         if (stopped) return;
         if (authRetryCount < MAX_AUTH_RETRY && listenerErrorMayRecover(err)) {
