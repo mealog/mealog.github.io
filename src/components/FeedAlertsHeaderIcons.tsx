@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Bell, MessageCircle } from "lucide-react";
 import { cls } from "../lib/utils";
@@ -8,7 +8,7 @@ import {
   subscribeActivityInbox,
   unreadActivityCount,
 } from "../lib/activityInbox";
-import { unreadDmThreadCount } from "../lib/dm";
+import { feedDmIconHref, unreadDmThreadCount } from "../lib/dm";
 
 /** 피드 헤더 — 활동 알림 · DM 진입 및 미읽음 배지.
  * DM 스트림은 DmRealtimeProvider 가 피드/DM 경로에서 유지합니다.
@@ -39,6 +39,11 @@ export default function FeedAlertsHeaderIcons() {
   }, [myUid, tabVisible]);
 
   const dmUnread = myUid ? unreadDmThreadCount(threads, myUid, dmReadMap) : 0;
+  const dmEntryHref = useMemo(
+    () => (myUid ? feedDmIconHref(threads, dmReadMap, myUid) : "/friends"),
+    [threads, dmReadMap, myUid],
+  );
+  const dmEntryIsFriends = dmEntryHref === "/friends";
 
   if (!firebaseReady || !myUid) return null;
 
@@ -60,14 +65,19 @@ export default function FeedAlertsHeaderIcons() {
         )}
       </Link>
       <Link
-        to="/messages"
+        to={dmEntryHref}
         className={cls(
           "relative flex h-10 w-10 items-center justify-center rounded-full border transition-colors",
           dmUnread > 0
             ? "border-brand-400/40 bg-brand-500/15 text-brand-200"
             : "border-slate-700 bg-slate-900/50 text-slate-300 hover:bg-slate-800",
         )}
-        aria-label={`DM ${dmUnread > 0 ? `미읽음 ${dmUnread}건` : ""}`}
+        title={dmEntryIsFriends ? "열린 대화가 없으면 친구 목록으로 이동해요" : undefined}
+        aria-label={
+          dmEntryIsFriends
+            ? `DM — 친구에서 대화 시작 (${dmUnread > 0 ? `미읽음 ${dmUnread}건` : "미읽음 없음"})`
+            : `DM ${dmUnread > 0 ? `미읽음 ${dmUnread}건` : ""}`
+        }
       >
         <MessageCircle size={18} strokeWidth={2} />
         {dmUnread > 0 && (
