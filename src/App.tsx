@@ -115,49 +115,42 @@ export default function App() {
           ref={mainRef}
           className="relative min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain overflow-x-hidden bg-slate-950 pb-24 [-webkit-overflow-scrolling:touch]"
         >
+          {/* 풀투새로고침: 콘텐츠를 밀지 않고 스크롤 영역 맨 위에만 배지를 겹친다 */}
           <div
-            className={
-              ptr.isDragging || ptr.pendingReload
-                ? ""
-                : ptr.pullPx > 0
-                  ? "transition-[padding-top] duration-[280ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
-                  : ""
-            }
-            style={{ paddingTop: ptr.pullPx }}
+            className={`pointer-events-none sticky top-0 z-30 flex h-0 w-full justify-center overflow-visible px-4`}
+            style={{
+              transform: `translateY(${ptr.pullPx}px)`,
+              opacity: ptr.pullPx > 3 || ptr.pendingReload ? 1 : 0,
+              transition:
+                ptr.isDragging || ptr.pendingReload
+                  ? "none"
+                  : "opacity 220ms ease-out, transform 280ms cubic-bezier(0.22, 1, 0.36, 1)",
+            }}
+            aria-hidden
           >
-            <div
-              className="pointer-events-none flex flex-col items-center justify-end px-4 pb-1"
-              style={{
-                marginTop: ptr.pullPx ? -ptr.pullPx : 0,
-                height: ptr.pullPx || undefined,
-                minHeight: ptr.pullPx ? undefined : 0,
-                opacity: ptr.pullPx > 3 || ptr.pendingReload ? 1 : 0,
-                transition:
-                  ptr.isDragging || ptr.pendingReload ? "none" : "opacity 220ms ease-out",
-              }}
-              aria-hidden
-            >
-              <span className="inline-flex items-center gap-2 rounded-full border border-slate-700/90 bg-slate-900/95 px-3 py-1.5 text-[11px] font-medium text-slate-300 shadow-lg backdrop-blur-sm">
-                <RefreshCw
-                  size={14}
-                  className={`shrink-0 text-brand-400 ${ptr.pendingReload ? "animate-spin" : ""}`}
-                  style={
-                    ptr.pendingReload
-                      ? undefined
-                      : {
-                          transform: `rotate(${Math.min(1, ptr.pullPx / 52) * 320}deg)`,
-                          opacity: ptr.armed ? 1 : 0.55 + Math.min(1, ptr.pullPx / 52) * 0.45,
-                        }
-                  }
-                  aria-hidden
-                />
-                {ptr.pendingReload
-                  ? "새로고침 중…"
-                  : ptr.armed
-                    ? "놓으면 새로고침"
-                    : "당겨서 새로고침"}
-              </span>
-            </div>
+            <span className="inline-flex items-center gap-2 rounded-full border border-slate-700/90 bg-slate-900/95 px-3 py-1.5 text-[11px] font-medium text-slate-300 shadow-lg backdrop-blur-sm">
+              <RefreshCw
+                size={14}
+                className={`shrink-0 text-brand-400 ${ptr.pendingReload ? "animate-spin" : ""}`}
+                style={
+                  ptr.pendingReload
+                    ? undefined
+                    : {
+                        transform: `rotate(${Math.min(1, ptr.pullPx / 52) * 320}deg)`,
+                        opacity: ptr.armed ? 1 : 0.55 + Math.min(1, ptr.pullPx / 52) * 0.45,
+                      }
+                }
+                aria-hidden
+              />
+              {ptr.pendingReload
+                ? "새로고침 중…"
+                : ptr.armed
+                  ? "놓으면 새로고침"
+                  : "당겨서 새로고침"}
+            </span>
+          </div>
+
+          <div>
             <Routes>
               {/* 첫 화면은 피드. 기존 달력 홈은 /home 으로 이동 */}
               <Route path="/" element={<FeedPage />} />
