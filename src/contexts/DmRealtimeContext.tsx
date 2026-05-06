@@ -97,7 +97,12 @@ export function DmRealtimeProvider({ children }: { children: ReactNode }) {
         const rows = await prefetchMyDmThreadsSnapshot(myUid);
         if (cancelled) return;
         setThreadsListError(null);
-        setThreads((prev) => (prev.length > 0 ? prev : rows));
+        /** 구독 웜업이 빈 결과를 줄 수 있는 타이밍에 프리페치가 진짜 목록만 덮도록 */
+        setThreads((prev) => {
+          if (rows.length > 0) return rows;
+          if (prev.length > 0) return prev;
+          return rows;
+        });
         setThreadsListReady(true);
       } catch {
         /* 실시간 구독·재시도로 복구 */

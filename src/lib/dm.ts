@@ -259,7 +259,7 @@ export async function ensureDmThreadWith(peerUid: string): Promise<string> {
 
 /**
  * 내가 참가한 DM 스레드 구독.
- * - 먼저 getDocs 로 일회 로드(모바일 등에서 리스너만 붙일 때보다 안정적인 경우가 많음)
+ * - getDocs 웜업(재시도·서버 폴백)·웜업이 끝난 뒤에만 onSnapshot 을 붙여, 빈 로컬 캐시가 먼저 UI를 덮는 레이스를 줄임.
  * - 리스너가 끊겨도 한 번이라도 성공한 목록이 있으면 onErr 로 낙관을 보이지 않고 백오프 재구독
  */
 export function subscribeMyDmThreads(
@@ -332,64 +332,33 @@ export function subscribeMyDmThreads(
   };
 
   /**
-   * onSnapshot 이 로컬 캐시 빈 결과를 먼저 보내면, prefetch/웜업보다 앞서 빈 목록으로 UI를 덮는다.
-   * getDocs 웜업·이후 서버 스냅샷은 그대로 전달한다(진짜로 대화 0건인 경우 포함).
+   * 로컬 캐시에 아직 목록이 없으면 빈 스냅샷(fromCache)·getDocs 결과가 나와 UI를 비운다.
+   * 서버 결과(fromCache:false) 또는 문서가 있는 스냅샷만 반영한다. 반환값 false 는 "적용 안 함".
    */
-  const applySnapshot = (snap: QuerySnapshot, source: "listener" | "warmup") => {
+  const applySnapshot = (snap: QuerySnapshot): boolean => {
     if (
-      source === "listener" &&
       snap.empty &&
       snap.metadata.fromCache &&
       !snap.metadata.hasPendingWrites
     ) {
-      return;
+      return false;
     }
     cancelSnapshotWatchdog();
     hadSuccess = true;
     authRetryCount = 0;
     clearReconnect();
     cb(snapshotToDmThreads(snap, DISPLAY_LIMIT));
+    return true;
   };
-
-  /** 웜업: 캐시·일시 장애에 대비해 여러 번 getDocs 후, 서버 일회 폴백 */
-  void (async () => {
-    for (let i = 0; i < warmMaxAttempts && !stopped; i++) {
-      try {
-        if (i > 0) {
-          await getFirebaseAuth()
-            .currentUser?.getIdToken(i < 3 ? false : true)
-            .catch(() => {});
-          const pauseMs = mobile ? 260 + i * 240 : 320 * i;
-          await new Promise((r) => setTimeout(r, pauseMs));
-        }
-        const snap = await getDocs(q);
-        if (stopped) return;
-        applySnapshot(snap, "warmup");
-        return;
-      } catch (e) {
-        if (stopped) return;
-        if (!listenerErrorMayRecover(e)) break;
-      }
-    }
-    if (stopped || hadSuccess) return;
-    try {
-      await getFirebaseAuth().currentUser?.getIdToken(true).catch(() => {});
-      const snap = await getDocsFromServer(q);
-      if (stopped) return;
-      applySnapshot(snap, "warmup");
-    } catch (e) {
-      if (!stopped) {
-        console.warn("[dm] getDocsFromServer thread list fallback", e);
-      }
-    }
-  })();
 
   const attach = () => {
     unsub?.();
     cancelSnapshotWatchdog();
     unsub = onSnapshot(
       q,
-      (snap) => applySnapshot(snap, "listener"),
+      (snap) => {
+        void applySnapshot(snap);
+      },
       async (err) => {
         if (stopped) return;
         if (authRetryCount < MAX_AUTH_RETRY && listenerErrorMayRecover(err)) {
@@ -419,7 +388,39 @@ export function subscribeMyDmThreads(
     if (!stopped && !hadSuccess) scheduleSnapshotWatchdog();
   };
 
-  attach();
+  /** 웜업이 끝난 뒤에만 onSnapshot 붙임 — 리스너가 prefetch/웜업보다 먼저 빈 목록을 덮는 레이스 제거 */
+  void (async () => {
+    for (let i = 0; i < warmMaxAttempts && !stopped; i++) {
+      try {
+        if (i > 0) {
+          await getFirebaseAuth()
+            .currentUser?.getIdToken(i < 3 ? false : true)
+            .catch(() => {});
+          const pauseMs = mobile ? 260 + i * 240 : 320 * i;
+          await new Promise((r) => setTimeout(r, pauseMs));
+        }
+        const snap = await getDocs(q);
+        if (stopped) return;
+        if (applySnapshot(snap)) break;
+      } catch (e) {
+        if (stopped) return;
+        if (!listenerErrorMayRecover(e)) break;
+      }
+    }
+    if (!stopped && !hadSuccess) {
+      try {
+        await getFirebaseAuth().currentUser?.getIdToken(true).catch(() => {});
+        const snap = await getDocsFromServer(q);
+        if (!stopped) applySnapshot(snap);
+      } catch (e) {
+        if (!stopped) {
+          console.warn("[dm] getDocsFromServer thread list fallback", e);
+        }
+      }
+    }
+    if (!stopped) attach();
+  })();
+
   return () => {
     stopped = true;
     clearReconnect();
