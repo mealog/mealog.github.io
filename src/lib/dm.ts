@@ -7,8 +7,8 @@ import {
   orderBy,
   query,
   setDoc,
-  updateDoc,
   where,
+  writeBatch,
   type Unsubscribe,
 } from "firebase/firestore";
 import type { DmMessageDoc, DmThreadDoc } from "../types";
@@ -40,6 +40,44 @@ function isPermissionDenied(e: unknown): boolean {
     /insufficient permissions/i.test(raw) ||
     /missing or insufficient permissions/i.test(raw)
   );
+}
+
+function mutationMayRecoverWithRetry(e: unknown): boolean {
+  const code = String((e as { code?: string })?.code ?? "");
+  if (
+    code === "unavailable" ||
+    code.endsWith("/unavailable") ||
+    code === "deadline-exceeded" ||
+    code.endsWith("/deadline-exceeded") ||
+    code === "aborted" ||
+    code === "internal" ||
+    code === "resource-exhausted" ||
+    code.endsWith("/resource-exhausted") ||
+    code === "unauthenticated" ||
+    code.endsWith("/unauthenticated")
+  ) {
+    return true;
+  }
+  return isPermissionDenied(e);
+}
+
+/** 전송 단 transient / 토큰 stale 에 대해 소수 회 재시도 */
+async function withFirestoreMutationRetries(job: () => Promise<void>): Promise<void> {
+  const max = 4;
+  let last: unknown;
+  for (let i = 0; i < max; i++) {
+    try {
+      await job();
+      return;
+    } catch (e) {
+      last = e;
+      const recover = mutationMayRecoverWithRetry(e);
+      if (!recover || i === max - 1) throw e;
+      await getFirebaseAuth().currentUser?.getIdToken(true).catch(() => {});
+      await new Promise((r) => setTimeout(r, 300 * (i + 1)));
+    }
+  }
+  throw last;
 }
 
 /** DM 전송·스레드 생성 실패 시 사용자에게 보여 줄 메시지 */
@@ -86,6 +124,28 @@ export function dmThreadIdForPair(uidA: string, uidB: string): string {
   return uidA < uidB ? `${uidA}_${uidB}` : `${uidB}_${uidA}`;
 }
 
+/** 문서 id 가 규약에 맞는지 — Firebase UID 는 관례적으로 `_` 를 포함하지 않음 */
+export function parseDmThreadPeers(threadId: string): [string, string] | null {
+  const parts = threadId.split("_");
+  if (parts.length !== 2) return null;
+  const a = parts[0]!;
+  const b = parts[1]!;
+  if (!a.length || !b.length || a >= b) return null;
+  return [a, b];
+}
+
+export function userInDmThreadId(threadId: string, me: string): boolean {
+  const p = parseDmThreadPeers(threadId);
+  if (!p) return false;
+  return me === p[0] || me === p[1];
+}
+
+export function otherUidInDmThreadId(threadId: string, me: string): string | null {
+  const p = parseDmThreadPeers(threadId);
+  if (!p) return null;
+  return me === p[0] ? p[1]! : me === p[1]! ? p[0]! : null;
+}
+
 function participantsTuple(uidA: string, uidB: string): [string, string] {
   return uidA < uidB ? [uidA, uidB] : [uidB, uidA];
 }
@@ -98,6 +158,16 @@ function requireUser() {
 
 function threadsCol() {
   return collection(getFirestoreDb(), "dmThreads");
+}
+
+async function ensureDmThreadDocReady(threadId: string): Promise<void> {
+  const me = requireUser();
+  const peer = otherUidInDmThreadId(threadId, me);
+  if (!peer) throw new Error("이 대화에 참가할 수 없습니다.");
+  const fs = getFirestoreDb();
+  const tref = doc(fs, "dmThreads", threadId);
+  const snap = await getDoc(tref);
+  if (!snap.exists()) await ensureDmThreadWith(peer);
 }
 
 function dmReadDoc(myUid: string, threadId: string) {
@@ -156,38 +226,64 @@ export function subscribeMyDmThreads(
 
   const FETCH_LIMIT = 100;
   const DISPLAY_LIMIT = 40;
-
   const q = query(
     threadsCol(),
     where("participantUids", "array-contains", uid),
     limit(FETCH_LIMIT),
   );
-  return onSnapshot(
-    q,
-    (snap) => {
-      const rows = snap.docs
-        .map((d) => ({
-          ...(d.data() as Omit<DmThreadDoc, "id">),
-          id: d.id,
-        }))
-        .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-        .slice(0, DISPLAY_LIMIT);
-      cb(rows);
-    },
-    (err) => {
-      const code = (err as { code?: string })?.code;
-      if (code !== "permission-denied") {
-        console.warn("[dm] threads subscribe", err);
-      }
-      onErr?.(err);
-    },
-  );
+
+  let unsub: Unsubscribe | null = null;
+  let stopped = false;
+  let retriedAuth = false;
+
+  const attach = () => {
+    unsub?.();
+    unsub = onSnapshot(
+      q,
+      (snap) => {
+        const rows = snap.docs
+          .map((d) => ({
+            ...(d.data() as Omit<DmThreadDoc, "id">),
+            id: d.id,
+          }))
+          .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+          .slice(0, DISPLAY_LIMIT);
+        cb(rows);
+      },
+      async (err) => {
+        if (stopped) return;
+        const code = String((err as { code?: string })?.code ?? "");
+        if (
+          !retriedAuth &&
+          (code === "permission-denied" ||
+            code.endsWith("/permission-denied") ||
+            code === "unauthenticated" ||
+            code.endsWith("/unauthenticated"))
+        ) {
+          retriedAuth = true;
+          await getFirebaseAuth().currentUser?.getIdToken(true).catch(() => {});
+          if (!stopped) attach();
+          return;
+        }
+        if (code !== "permission-denied" && !code.endsWith("/permission-denied")) {
+          console.warn("[dm] threads subscribe", err);
+        }
+        onErr?.(err);
+      },
+    );
+  };
+
+  attach();
+  return () => {
+    stopped = true;
+    unsub?.();
+  };
 }
 
 /** 스레드에 내가 참가자인지(클라이언트 항상 확인) */
 export async function verifyThreadParticipation(threadId: string): Promise<boolean> {
   const me = getFirebaseAuth().currentUser?.uid;
-  if (!me) return false;
+  if (!me || !userInDmThreadId(threadId, me)) return false;
   const s = await getDoc(doc(getFirestoreDb(), "dmThreads", threadId));
   if (!s.exists()) return false;
   const p = (s.data() as { participantUids?: string[] }).participantUids;
@@ -200,19 +296,60 @@ export function subscribeDmMessages(
   onErr?: (e: unknown) => void,
 ): Unsubscribe {
   const fs = getFirestoreDb();
-  const q = query(
-    collection(fs, "dmThreads", threadId, "messages"),
-    orderBy("createdAt", "asc"),
-    limit(200),
-  );
-  return onSnapshot(
-    q,
-    (snap) => cb(snap.docs.map((d) => ({ ...(d.data() as DmMessageDoc), id: d.id }))),
-    (err) => {
-      console.warn("[dm] messages subscribe", err);
-      onErr?.(err);
-    },
-  );
+
+  let unsub: Unsubscribe | null = null;
+  let disposed = false;
+  let authRetried = false;
+  /** orderBy 에 실패하면(예: 과거 데이터에 createdAt 누락)·인덱스 일시 문제 시 폴백 */
+  let plainFallback = false;
+
+  const attach = () => {
+    unsub?.();
+    const col = collection(fs, "dmThreads", threadId, "messages");
+    const q = plainFallback
+      ? query(col, limit(200))
+      : query(col, orderBy("createdAt", "desc"), limit(200));
+
+    unsub = onSnapshot(
+      q,
+      (snap) => {
+        let rows = snap.docs.map((d) => ({ ...(d.data() as DmMessageDoc), id: d.id }));
+        if (!plainFallback) rows.reverse();
+        rows.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+        cb(rows);
+      },
+      async (err) => {
+        if (disposed) return;
+        const code = String((err as { code?: string })?.code ?? "");
+        if (
+          !authRetried &&
+          (code === "permission-denied" ||
+            code.endsWith("/permission-denied") ||
+            code === "unauthenticated" ||
+            code.endsWith("/unauthenticated"))
+        ) {
+          authRetried = true;
+          await getFirebaseAuth().currentUser?.getIdToken(true).catch(() => {});
+          if (!disposed) attach();
+          return;
+        }
+        if (!plainFallback && (code.includes("failed-precondition") || code.includes("index"))) {
+          plainFallback = true;
+          authRetried = false;
+          if (!disposed) attach();
+          return;
+        }
+        console.warn("[dm] messages subscribe", err);
+        onErr?.(err);
+      },
+    );
+  };
+
+  attach();
+  return () => {
+    disposed = true;
+    unsub?.();
+  };
 }
 
 export async function sendDmMessage(threadId: string, rawText: string): Promise<void> {
@@ -222,50 +359,39 @@ export async function sendDmMessage(threadId: string, rawText: string): Promise<
   if (trimmed.length > 4000) throw new Error("메시지가 너무 깁니다.");
 
   const fs = getFirestoreDb();
-  const tref = doc(fs, "dmThreads", threadId);
-  const threadSnap = await getDoc(tref);
-  if (!threadSnap.exists()) throw new Error("대화방을 불러오지 못했습니다.");
-  const p = (threadSnap.data() as { participantUids?: string[] }).participantUids;
-  if (!Array.isArray(p) || !p.includes(me)) {
-    throw new Error("이 대화에 참가할 수 없습니다.");
-  }
 
-  const msgRef = doc(collection(fs, "dmThreads", threadId, "messages"));
-  const now = Date.now();
+  await withFirestoreMutationRetries(async () => {
+    await ensureDmThreadDocReady(threadId);
 
-  const msgPayload = { senderUid: me, text: trimmed, createdAt: now };
-  const threadPayload = {
-    lastText: trimmed.slice(0, 280),
-    lastSenderUid: me,
-    updatedAt: now,
-  };
-
-  /** permission-denied 이면 토큰 갱신 후 한 번 더 시도 */
-  const withPermissionRetry = async (fn: () => Promise<void>) => {
-    try {
-      await fn();
-    } catch (e) {
-      if (!isPermissionDenied(e)) throw e;
-      await getFirebaseAuth().currentUser?.getIdToken(true);
-      await fn();
+    const tref = doc(fs, "dmThreads", threadId);
+    const threadSnap = await getDoc(tref);
+    if (!threadSnap.exists()) throw new Error("대화방을 불러오지 못했습니다.");
+    const p = (threadSnap.data() as { participantUids?: string[] }).participantUids;
+    if (!Array.isArray(p) || !p.includes(me)) {
+      throw new Error("이 대화에 참가할 수 없습니다.");
     }
-  };
 
-  // 배치 대신 순차 저장 — 실패 시 규칙이 메시지 경로인지 스레드 메타인지 안내를 나눔
-  try {
-    await withPermissionRetry(() => setDoc(msgRef, msgPayload));
-  } catch (e) {
-    throw new Error(dmFirestoreUserMessage(e, isPermissionDenied(e) ? "messageDoc" : undefined));
-  }
+    const msgRef = doc(collection(fs, "dmThreads", threadId, "messages"));
+    const now = Date.now();
+    const msgPayload = { senderUid: me, text: trimmed, createdAt: now };
+    const threadPayload = {
+      lastText: trimmed.slice(0, 280),
+      lastSenderUid: me,
+      updatedAt: now,
+    };
+
+    const batch = writeBatch(fs);
+    batch.set(msgRef, msgPayload);
+    batch.update(tref, threadPayload);
+    await batch.commit();
+  });
 
   try {
-    await withPermissionRetry(() => updateDoc(tref, threadPayload));
-  } catch (e) {
-    throw new Error(dmFirestoreUserMessage(e, isPermissionDenied(e) ? "threadMeta" : undefined));
-  }
-
-  try {
-    await setDoc(dmReadDoc(me, threadId), { threadId, lastReadAt: now }, { merge: true });
+    await setDoc(
+      dmReadDoc(me, threadId),
+      { threadId, lastReadAt: Date.now() },
+      { merge: true },
+    );
   } catch (e) {
     console.warn("[dm] read state after send failed", e);
   }

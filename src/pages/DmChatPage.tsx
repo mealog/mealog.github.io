@@ -5,11 +5,12 @@ import { ArrowLeft, Loader2, Send } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { getPublicProfile, isCalendarConnectedPairFromServer } from "../lib/friends";
 import {
-  dmErrorMessageForUi,
+  ensureDmThreadWith,
   markDmThreadReadForMe,
+  otherUidInDmThreadId,
   sendDmMessage,
   subscribeDmMessages,
-  verifyThreadParticipation,
+  userInDmThreadId,
 } from "../lib/dm";
 import { getFirestoreDb } from "../lib/firebaseApp";
 import type { DmMessageDoc } from "../types";
@@ -28,37 +29,49 @@ export default function DmChatPage() {
   const [peerLabel, setPeerLabel] = useState<string>("대화");
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
-  /** 구독 거절 시 하단 alert 대신 화면에 표시 (삼성 브라우저 등에서만 permission 이 달라져도 원인 파악용) */
-  const [messagesListenErr, setMessagesListenErr] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!threadId || !user?.uid) return;
+
+    if (!userInDmThreadId(threadId, user.uid)) {
+      setAllowed(false);
+      setCanSend(false);
+      return;
+    }
+
+    setAllowed(true);
     let cancelled = false;
     void (async () => {
-      const ok = await verifyThreadParticipation(threadId);
-      if (cancelled) return;
-      setAllowed(ok);
       setCanSend(false);
-      if (!ok) return;
-      await markDmThreadReadForMe(threadId);
-      const fs = getFirestoreDb();
-      const snap = await getDoc(doc(fs, "dmThreads", threadId));
-      const p = (snap.data() as { participantUids?: string[] } | undefined)?.participantUids ?? [];
-      const peer = p.find((x) => x !== user.uid);
-      if (cancelled || !peer) return;
-      setCanSend(true);
-      let linked = true;
       try {
-        linked = await isCalendarConnectedPairFromServer(user.uid, peer);
+        const peer = otherUidInDmThreadId(threadId, user.uid)!;
+        const fs = getFirestoreDb();
+        const snap = await getDoc(doc(fs, "dmThreads", threadId));
+        if (cancelled) return;
+        if (!snap.exists()) await ensureDmThreadWith(peer);
+        if (cancelled) return;
+
+        await markDmThreadReadForMe(threadId);
+        setCanSend(true);
+
+        let linked = true;
+        try {
+          linked = await isCalendarConnectedPairFromServer(user.uid, peer);
+        } catch {
+          linked = false;
+        }
+        if (cancelled) return;
+        setCalendarLinked(linked);
+        const prof = await getPublicProfile(peer);
+        if (cancelled) return;
+        setPeerLabel(prof?.displayName ?? peer.slice(0, 6));
       } catch {
-        linked = false;
+        if (!cancelled) {
+          setAllowed(false);
+          setCanSend(false);
+        }
       }
-      if (cancelled) return;
-      setCalendarLinked(linked);
-      const prof = await getPublicProfile(peer);
-      if (cancelled) return;
-      setPeerLabel(prof?.displayName ?? peer.slice(0, 6));
     })();
     return () => {
       cancelled = true;
@@ -67,16 +80,10 @@ export default function DmChatPage() {
 
   useEffect(() => {
     if (!threadId || !allowed) return;
-    setMessagesListenErr(null);
-    const unsub = subscribeDmMessages(
-      threadId,
-      (rows) => {
-        setMessagesListenErr(null);
-        setMessages(rows);
-        requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }));
-      },
-      (err) => setMessagesListenErr(dmErrorMessageForUi(err)),
-    );
+    const unsub = subscribeDmMessages(threadId, (rows) => {
+      setMessages(rows);
+      requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }));
+    });
     return () => unsub();
   }, [threadId, allowed]);
 
@@ -90,8 +97,8 @@ export default function DmChatPage() {
     try {
       await sendDmMessage(threadId, text);
       setText("");
-    } catch (e) {
-      alert(dmErrorMessageForUi(e));
+    } catch {
+      /* 재시도·규칙 조정은 sendDmMessage 및 Firestore 규칙에서 처리 */
     } finally {
       setSending(false);
     }
@@ -147,11 +154,6 @@ export default function DmChatPage() {
       </header>
 
       <div className="flex max-h-[55vh] flex-col gap-2 overflow-y-auto">
-        {messagesListenErr && (
-          <p className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-            {messagesListenErr}
-          </p>
-        )}
         {messages.length === 0 ? (
           <p className="py-8 text-center text-xs text-slate-500">첫 메시지를 남겨 보세요.</p>
         ) : (

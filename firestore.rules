@@ -199,10 +199,9 @@ service cloud.firestore {
 
     match /dmThreads/{threadId}/messages/{mid} {
       allow read: if signedIn() && dmMessageReadAllowed(threadId);
-      // createdAt 타입 검사 제거 — SDK/직렬화에서 int/float 외로 들어가 규칙만 거절되는 경우 방지
+      // create 도 read 와 동일하게 threadId(uid소_uid큰) 규약만 검사 — 부모 get() 은 거절·지연 원인이 됨
       allow create: if signedIn()
-        && dmThreadDoc(threadId).participantUids is list
-        && me() in dmThreadDoc(threadId).participantUids
+        && dmMessageReadAllowed(threadId)
         && request.resource.data.senderUid == me()
         && request.resource.data.text is string
         && request.resource.data.text.size() > 0

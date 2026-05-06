@@ -4,13 +4,13 @@ import { ArrowLeft, Loader2, MessageCircle } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { getPublicProfile } from "../lib/friends";
 import {
-  dmErrorMessageForUi,
   ensureDmThreadWith,
   otherParticipantUid,
+  otherUidInDmThreadId,
   subscribeDmReadMap,
   subscribeMyDmThreads,
   unreadDmThreadCount,
-  verifyThreadParticipation,
+  userInDmThreadId,
 } from "../lib/dm";
 import { getFirebaseAuth } from "../lib/firebaseApp";
 import type { DmThreadDoc } from "../types";
@@ -22,7 +22,6 @@ export default function MessagesPage() {
   const peerFromQuery = searchParams.get("with")?.trim();
   const { user, firebaseReady, loading: authLoading } = useAuth();
   const [threads, setThreads] = useState<DmThreadDoc[]>([]);
-  const [threadsListenErr, setThreadsListenErr] = useState<string | null>(null);
   const [readMap, setReadMap] = useState<Map<string, number>>(new Map());
   const [peerNames, setPeerNames] = useState<Map<string, string>>(new Map());
   const handledPeerRef = useRef<string | null>(null);
@@ -41,15 +40,7 @@ export default function MessagesPage() {
       if (cancelled) return;
       const live = getFirebaseAuth().currentUser?.uid;
       if (!live || live !== user.uid) return;
-      setThreadsListenErr(null);
-      ua = subscribeMyDmThreads(
-        user.uid,
-        (rows) => {
-          setThreadsListenErr(null);
-          setThreads(rows);
-        },
-        (e) => setThreadsListenErr(dmErrorMessageForUi(e)),
-      );
+      ua = subscribeMyDmThreads(user.uid, setThreads);
       ub = subscribeDmReadMap(user.uid, setReadMap, (e) =>
         console.warn("[messages] dm read map", e),
       );
@@ -99,15 +90,17 @@ export default function MessagesPage() {
         let tid: string;
         if (peerFromQuery.includes("_")) {
           tid = peerFromQuery;
-          const ok = await verifyThreadParticipation(tid);
-          if (!ok) throw new Error("참가할 수 없는 대화예요.");
+          if (!user?.uid || !userInDmThreadId(tid, user.uid)) {
+            throw new Error("invalid thread");
+          }
+          const peer = otherUidInDmThreadId(tid, user.uid)!;
+          await ensureDmThreadWith(peer);
         } else {
           tid = await ensureDmThreadWith(peerFromQuery);
         }
         navigate(`/messages/${tid}`, { replace: true });
-      } catch (e) {
+      } catch {
         handledPeerRef.current = null;
-        alert(dmErrorMessageForUi(e));
         navigate("/messages", { replace: true });
       }
     })();
@@ -138,12 +131,6 @@ export default function MessagesPage() {
           <TitleBlock dmUnread={dmUnread} />
         </div>
       </header>
-
-      {threadsListenErr && (
-        <p className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-          {threadsListenErr}
-        </p>
-      )}
 
       {threads.length === 0 ? (
         <p className="card p-8 text-center text-sm text-slate-400">
