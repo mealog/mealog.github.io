@@ -29,7 +29,9 @@ const DmRealtimeContext = createContext<Ctx | null>(null);
 
 /**
  * 피드(/)·DM(/messages*) 에서만 Firestore 리스너 활성화.
- * 피드에서 이미 구독 중인 상태로 DM 화면으로 오면 리스너를 끊지 않아 — 모바일에서 목록 첫 스냅샷 대기·실패가 줄어듦.
+ * `shouldListen` 만으로는 `/` → `/messages` 첫 진입 시 효과가 다시 돌지 않아 목록이 빈 채로 실패하는
+ * 경우가 있음(친구 탭은 shouldListen 이 false→true 로 바뀌어 구독이 새로 붙음) — pathname 을
+ * 의존해 DM 경로 전환마다 구독을 정리·재부착합니다.
  * 탭이 백그라운드일 때는 기존과 같이 끔(읽기·배터리).
  */
 export function DmRealtimeProvider({ children }: { children: ReactNode }) {
@@ -125,7 +127,7 @@ export function DmRealtimeProvider({ children }: { children: ReactNode }) {
       ua?.();
       ub?.();
     };
-  }, [firebaseReady, myUid, authLoading, shouldListen, retryNonce]);
+  }, [firebaseReady, myUid, authLoading, shouldListen, pathname, retryNonce]);
 
   const value = useMemo<Ctx>(
     () => ({
