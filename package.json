@@ -11,6 +11,8 @@
     "lint": "tsc -b --noEmit",
     "test:gemini": "node scripts/test-gemini.mjs",
     "test:auth": "vite --host --open /auth-test.html",
+    "firebase:login": "npx --yes firebase-tools login",
+    "firebase:login:remote": "npx --yes firebase-tools login --no-localhost",
     "deploy:firestore-rules": "npx --yes firebase-tools deploy --only firestore:rules",
     "deploy:firestore": "npx --yes firebase-tools deploy --only firestore"
   },
