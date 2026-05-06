@@ -45,6 +45,14 @@ function isPermissionDenied(e: unknown): boolean {
 
 function mutationMayRecoverWithRetry(e: unknown): boolean {
   const code = String((e as { code?: string })?.code ?? "");
+  // 할당량 초과 시 재시도하면 백엔드 부하만 가중되므로 절대 재시도하지 않음
+  if (
+    code === "resource-exhausted" ||
+    code.endsWith("/resource-exhausted") ||
+    /quota exceeded/i.test(firebaseErrText(e))
+  ) {
+    return false;
+  }
   if (
     code === "unavailable" ||
     code.endsWith("/unavailable") ||
@@ -52,8 +60,6 @@ function mutationMayRecoverWithRetry(e: unknown): boolean {
     code.endsWith("/deadline-exceeded") ||
     code === "aborted" ||
     code === "internal" ||
-    code === "resource-exhausted" ||
-    code.endsWith("/resource-exhausted") ||
     code === "unauthenticated" ||
     code.endsWith("/unauthenticated")
   ) {
@@ -225,8 +231,8 @@ export function subscribeMyDmThreads(
     return () => {};
   }
 
-  const FETCH_LIMIT = 100;
-  const DISPLAY_LIMIT = 40;
+  const FETCH_LIMIT = 48;
+  const DISPLAY_LIMIT = 25;
   const q = query(
     threadsCol(),
     where("participantUids", "array-contains", uid),
@@ -308,8 +314,8 @@ export function subscribeDmMessages(
     unsub?.();
     const col = collection(fs, "dmThreads", threadId, "messages");
     const q = plainFallback
-      ? query(col, limit(200))
-      : query(col, orderBy("createdAt", "desc"), limit(200));
+      ? query(col, limit(100))
+      : query(col, orderBy("createdAt", "desc"), limit(100));
 
     unsub = onSnapshot(
       q,

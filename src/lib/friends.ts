@@ -714,7 +714,7 @@ export function subscribeFriendLatestMeals(
   onErr?: (e: unknown) => void,
 ): Unsubscribe {
   const fs = getFirestoreDb();
-  const fetchCap = Math.min(120, Math.max(max * 6, max + 30));
+  const fetchCap = Math.min(56, Math.max(max * 3, max + 10));
   const q = query(
     collection(fs, "users", ownerUid, "meals"),
     orderBy("date", "desc"),

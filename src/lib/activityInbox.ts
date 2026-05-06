@@ -53,7 +53,7 @@ export function subscribeActivityInbox(
   cb: (rows: ActivityInboxDoc[]) => void,
   onErr?: (e: unknown) => void,
 ): Unsubscribe {
-  const q = query(inboxCol(recipientUid), orderBy("createdAt", "desc"), limit(80));
+  const q = query(inboxCol(recipientUid), orderBy("createdAt", "desc"), limit(36));
   return onSnapshot(
     q,
     (snap) => {

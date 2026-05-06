@@ -15,25 +15,36 @@ import {
   unreadDmThreadCount,
 } from "../lib/dm";
 
-/** 피드 헤더 — 활동 알림 · DM 진입 및 미읽음 배지 */
+/** 피드 헤더 — 활동 알림 · DM 진입 및 미읽음 배지.
+ *  백그라운드일 때는 리스너를 끄며 Firestore 읽기·연결 부하를 줄인다.
+ */
 export default function FeedAlertsHeaderIcons() {
   const { user, firebaseReady, loading: authLoading } = useAuth();
   const myUid = user?.uid;
 
+  const [tabVisible, setTabVisible] = useState(() =>
+    typeof document === "undefined" ? true : document.visibilityState === "visible",
+  );
+  useEffect(() => {
+    const onVis = () => setTabVisible(document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
+
   const [activityUnread, setActivityUnread] = useState(0);
   useEffect(() => {
-    if (!myUid) return;
+    if (!myUid || !tabVisible) return;
     return subscribeActivityInbox(
       myUid,
       (rows) => setActivityUnread(unreadActivityCount(rows)),
       () => setActivityUnread(0),
     );
-  }, [myUid]);
+  }, [myUid, tabVisible]);
 
   const [threads, setThreads] = useState<DmThreadDoc[]>([]);
   const [dmReadMap, setDmReadMap] = useState<Map<string, number>>(new Map());
   useEffect(() => {
-    if (!myUid || authLoading) return;
+    if (!myUid || authLoading || !tabVisible) return;
     let unsubThreads: (() => void) | undefined;
     let unsubRead: (() => void) | undefined;
     let cancelled = false;
@@ -54,7 +65,7 @@ export default function FeedAlertsHeaderIcons() {
       unsubThreads?.();
       unsubRead?.();
     };
-  }, [myUid, authLoading]);
+  }, [myUid, authLoading, tabVisible]);
 
   const dmUnread = myUid ? unreadDmThreadCount(threads, myUid, dmReadMap) : 0;
 

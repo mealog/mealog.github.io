@@ -42,12 +42,27 @@ export default function MealSocialBlock({ ownerUid, mealId }: Props) {
   const myUid = user?.uid;
   const isOwner = myUid === ownerUid;
 
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [inView, setInView] = useState(false);
+
   const [likedUids, setLikedUids] = useState<string[] | null>(null);
   const [comments, setComments] = useState<MealComment[] | null>(null);
   const [accessErr, setAccessErr] = useState(false);
 
   useEffect(() => {
     if (!myUid) return;
+    const el = wrapRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => setInView(entry.isIntersecting),
+      { root: null, rootMargin: "160px", threshold: 0 },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [myUid]);
+
+  useEffect(() => {
+    if (!myUid || !inView) return;
     setAccessErr(false);
     const unsubL = subscribeLikes(
       ownerUid,
@@ -71,7 +86,7 @@ export default function MealSocialBlock({ ownerUid, mealId }: Props) {
       unsubL();
       unsubC();
     };
-  }, [myUid, ownerUid, mealId]);
+  }, [myUid, inView, ownerUid, mealId]);
 
   const liked = useMemo(
     () => (myUid && likedUids ? likedUids.includes(myUid) : false),
@@ -96,39 +111,45 @@ export default function MealSocialBlock({ ownerUid, mealId }: Props) {
     return { topLevel: top, repliesByParent: map, total: comments?.length ?? 0 };
   }, [comments]);
 
-  if (!myUid || accessErr) return null;
+  if (!myUid) return null;
 
   return (
-    <div className="space-y-3 border-t border-slate-800 pt-3">
-      <LikeRow
-        ownerUid={ownerUid}
-        mealId={mealId}
-        liked={liked}
-        likeCount={likedUids?.length ?? 0}
-        loading={likedUids === null}
-      />
-      <div className="space-y-2">
-        <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-          <MessageCircle size={12} />
-          <span>댓글 {total}</span>
-        </div>
-        {comments === null ? (
-          <p className="text-[11px] text-slate-500">불러오는 중…</p>
-        ) : (
-          topLevel.map((c) => (
-            <ThreadItem
-              key={c.id}
-              comment={c}
-              replies={repliesByParent.get(c.id) ?? []}
-              myUid={myUid}
-              isOwner={isOwner}
-              ownerUid={ownerUid}
-              mealId={mealId}
-            />
-          ))
-        )}
-        <NewCommentInput ownerUid={ownerUid} mealId={mealId} />
-      </div>
+    <div ref={wrapRef} className="space-y-3 border-t border-slate-800 pt-3">
+      {!inView ? (
+        <p className="text-[11px] text-slate-500">이 카드가 화면에 보이면 댓글·좋아요를 불러와요.</p>
+      ) : accessErr ? null : (
+        <>
+          <LikeRow
+            ownerUid={ownerUid}
+            mealId={mealId}
+            liked={liked}
+            likeCount={likedUids?.length ?? 0}
+            loading={likedUids === null}
+          />
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+              <MessageCircle size={12} />
+              <span>댓글 {total}</span>
+            </div>
+            {comments === null ? (
+              <p className="text-[11px] text-slate-500">불러오는 중…</p>
+            ) : (
+              topLevel.map((c) => (
+                <ThreadItem
+                  key={c.id}
+                  comment={c}
+                  replies={repliesByParent.get(c.id) ?? []}
+                  myUid={myUid}
+                  isOwner={isOwner}
+                  ownerUid={ownerUid}
+                  mealId={mealId}
+                />
+              ))
+            )}
+            <NewCommentInput ownerUid={ownerUid} mealId={mealId} />
+          </div>
+        </>
+      )}
     </div>
   );
 }
