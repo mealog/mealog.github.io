@@ -45,7 +45,15 @@ export default function MessagesPage() {
       }
       if (cancelled) return;
       const live = getFirebaseAuth().currentUser?.uid;
-      if (!live || live !== user.uid) return;
+      if (!live || live !== user.uid) {
+        if (!cancelled) {
+          setListReady(true);
+          setListErr(
+            "로그인 세션을 확인할 수 없어요. 새로고침하거나 로그아웃 후 다시 로그인해 주세요.",
+          );
+        }
+        return;
+      }
       ua = subscribeMyDmThreads(
         user.uid,
         (rows) => {
@@ -56,7 +64,7 @@ export default function MessagesPage() {
         (e) => {
           setThreads([]);
           setListReady(true);
-          setListErr(dmErrorMessageForUi(e));
+          setListErr(dmErrorMessageForUi(e, "threadList"));
         },
       );
       ub = subscribeDmReadMap(user.uid, setReadMap, (e) =>

@@ -122,8 +122,14 @@ function dmFirestoreUserMessage(e: unknown, hint?: "messageDoc" | "threadMeta"):
 }
 
 /** alert 등 UI 용 — 위험한 원문 노출 줄임 */
-export function dmErrorMessageForUi(e: unknown): string {
-  return dmFirestoreUserMessage(e, undefined);
+export function dmErrorMessageForUi(
+  e: unknown,
+  hint?: "threadList" | "messageDoc" | "threadMeta",
+): string {
+  if (hint === "threadList" && isPermissionDenied(e)) {
+    return "대화 목록을 불러오지 못했어요. 잠시 후 새로고침하거나 로그아웃 후 다시 로그인해 보세요. 계속되면 Firebase 규칙·네트워크를 확인해 주세요.";
+  }
+  return dmFirestoreUserMessage(e, hint === "threadList" ? undefined : hint);
 }
 
 /** threadId 규약: uid 문자열 순서 오름차순 [a,b] 일 때 `${a}_${b}` */
@@ -224,9 +230,9 @@ export function subscribeMyDmThreads(
   cb: (threads: DmThreadDoc[]) => void,
   onErr?: (e: unknown) => void,
 ): Unsubscribe {
-  const authUid = getFirebaseAuth().currentUser?.uid;
-  const uid = authUid && myUid === authUid ? myUid : authUid ?? "";
-  if (!uid) {
+  /** Auth 세션 uid 와 인자가 다르면 빈 문자열 쿼리·권한 오류를 유발하므로 반드시 일치할 때만 구독 */
+  const uid = getFirebaseAuth().currentUser?.uid;
+  if (!uid || uid !== myUid) {
     cb([]);
     return () => {};
   }

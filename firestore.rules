@@ -155,11 +155,28 @@ service cloud.firestore {
         && p[0].size() > 0
         && p[1].size() > 0;
     }
+    // threadId 규약(uidA_uidB, uidA < uidB) — 부모 get() 없이 참가자 판별(메시지·스레드 read 공통)
+    function dmThreadPeersFromDocId(tid) {
+      return tid.split('_');
+    }
+    function dmMessageReadAllowed(threadId) {
+      let p = dmThreadPeersFromDocId(threadId);
+      return p.size() == 2
+        && p[0] is string
+        && p[1] is string
+        && p[0].size() > 0
+        && p[1].size() > 0
+        && p[0] < p[1]
+        && (request.auth.uid == p[0] || request.auth.uid == p[1]);
+    }
     match /dmThreads/{threadId} {
-      // 목록 쿼리(array-contains만 씀)와 호환 — 복합 쿼리+규칙 조합에서 permission-denied 방지
+      // 목록 쿼리(array-contains) + 레거시/형식 꼬임 문서: participantUids 가 없거나 타입이 어긋나도
+      // 문서 id 규약(uidA_uidB, uidA < uidB)으로 참가자면 읽기 허용 — 메시지 서브컬렉션 규칙과 동일 논리.
       allow read: if request.auth != null
-        && resource.data.participantUids is list
-        && request.auth.uid in resource.data.participantUids;
+        && (
+          (resource.data.participantUids is list && request.auth.uid in resource.data.participantUids)
+          || dmMessageReadAllowed(threadId)
+        );
       allow create: if signedIn()
         && dmPairOk(request.resource.data.participantUids)
         && threadId == request.resource.data.participantUids[0] + '_' + request.resource.data.participantUids[1]
@@ -176,22 +193,6 @@ service cloud.firestore {
       allow update: if signedIn()
         && resource.data.participantUids is list
         && me() in resource.data.participantUids;
-    }
-    // 메시지 read 는 threadId 규약(uidA_uidB, uidA < uidB)으로 참가 여부만 판단한다.
-    // 부모 문서를 rules 안에서 매번 get() 하면 목록 리스너·일부 브라우저 환경에서 평가가 불안정해질 수 있어
-    // threadId 문자열만으로 허용(앱 생성 규약과 일치 — Firebase UID 에 '_' 가 없음).
-    function dmThreadPeersFromDocId(tid) {
-      return tid.split('_');
-    }
-    function dmMessageReadAllowed(threadId) {
-      let p = dmThreadPeersFromDocId(threadId);
-      return p.size() == 2
-        && p[0] is string
-        && p[1] is string
-        && p[0].size() > 0
-        && p[1].size() > 0
-        && p[0] < p[1]
-        && (request.auth.uid == p[0] || request.auth.uid == p[1]);
     }
 
     match /dmThreads/{threadId}/messages/{mid} {
