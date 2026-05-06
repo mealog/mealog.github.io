@@ -650,8 +650,29 @@ export async function getMyViewerShare(ownerUid: string): Promise<Share | null> 
 // 반영되도록 onSnapshot 으로 구독한다. getDocs 일회성 호출만 쓰면
 // "analyzing" 상태 그대로 멈춰 있는 문제가 발생한다.
 //
-// base64 사진을 Blob 으로 디코딩하는 작업이 비싸므로, 문서별 updatedAt 이
-// 이전과 같으면 기존에 만들어 둔 Meal 을 재사용한다.
+// base64 사진을 Blob 으로 디코딩하는 작업이 비싸므로 캐시한다. 상위 문서만
+// updatedAt 이 같다고 같은 스냅샷이라 단정하면 안 된다 — items[].분석 상태만
+// 바뀌었는데 meal.updatedAt 이 동일·지연 같은 경우 오래된 분석 상태를 들고 간다.
+
+function mealFirestoreCacheKey(data: MealStored): string {
+  const base = data.updatedAt ?? data.createdAt ?? 0;
+  const items = data.items ?? [];
+  const part = items
+    .map((it) => {
+      const errLen = typeof it.analysisError === "string" ? it.analysisError.length : 0;
+      const menuLen = typeof it.menuText === "string" ? it.menuText.length : 0;
+      return [
+        it.id,
+        it.analysisStatus ?? "",
+        it.updatedAt ?? 0,
+        menuLen,
+        errLen,
+        typeof it.rating === "number" ? it.rating : "",
+      ].join(":");
+    })
+    .join("|");
+  return `${base}|${part}`;
+}
 
 /** 친구 meals 를 date 범위로 실시간 구독 */
 export function subscribeFriendMealsInRange(
@@ -667,7 +688,7 @@ export function subscribeFriendMealsInRange(
     where("date", ">=", startDateKey),
     where("date", "<=", endDateKey),
   );
-  const cache = new Map<string, { updatedAt: number; meal: Meal }>();
+  const cache = new Map<string, { key: string; meal: Meal }>();
   return onSnapshot(
     q,
     async (snap) => {
@@ -675,12 +696,13 @@ export function subscribeFriendMealsInRange(
         const rows = await Promise.all(
           snap.docs.map(async (d) => {
             const data = { ...(d.data() as MealStored), id: d.id };
+            const sig = mealFirestoreCacheKey(data);
             const cached = cache.get(d.id);
-            if (cached && cached.updatedAt === data.updatedAt) {
+            if (cached && cached.key === sig) {
               return cached.meal;
             }
             const meal = await storedToMeal(data);
-            cache.set(d.id, { updatedAt: data.updatedAt, meal });
+            cache.set(d.id, { key: sig, meal });
             return meal;
           }),
         );
@@ -720,7 +742,7 @@ export function subscribeFriendLatestMeals(
     orderBy("date", "desc"),
     limit(fetchCap),
   );
-  const cache = new Map<string, { rev: number; meal: Meal }>();
+  const cache = new Map<string, { key: string; meal: Meal }>();
   return onSnapshot(
     q,
     async (snap) => {
@@ -729,13 +751,13 @@ export function subscribeFriendLatestMeals(
           snap.docs.map(async (d) => {
             const data = { ...(d.data() as MealStored), id: d.id };
             const stored = data as MealStored;
-            const rev = (stored.updatedAt ?? stored.createdAt ?? 0) | 0;
+            const sig = mealFirestoreCacheKey(stored);
             const cached = cache.get(d.id);
-            if (cached && cached.rev === rev) {
+            if (cached && cached.key === sig) {
               return cached.meal;
             }
             const meal = await storedToMeal(data);
-            cache.set(d.id, { rev, meal });
+            cache.set(d.id, { key: sig, meal });
             return meal;
           }),
         );

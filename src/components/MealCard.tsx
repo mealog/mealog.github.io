@@ -221,11 +221,20 @@ export function ItemAnalysisBlock({
     return (
       <div className="flex items-center gap-2 rounded-xl bg-slate-800/50 px-3 py-2.5 text-sm text-slate-300">
         <Loader2 size={16} className="animate-spin text-brand-400" />
-        AI가 식단을 분석하고 있어요…
+        {readOnly
+          ? "친구 기록이 동기화되면 요약이 여기에도 보여요."
+          : "AI가 식단을 분석하고 있어요…"}
       </div>
     );
   }
   if (item.analysisStatus === "error") {
+    if (readOnly) {
+      return (
+        <p className="rounded-xl bg-slate-800/40 px-3 py-2.5 text-xs leading-relaxed text-slate-500">
+          이 식단의 AI 요약은 표시하지 않아요. 작성자 기기에서만 원인 안내가 보입니다.
+        </p>
+      );
+    }
     return (
       <div className="space-y-2 rounded-xl border border-rose-500/30 bg-rose-500/5 px-3 py-2.5">
         <div className="flex items-start gap-2 text-sm text-rose-300">
