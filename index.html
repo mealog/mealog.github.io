@@ -21,6 +21,9 @@
   <body class="bg-slate-950 text-slate-100">
     <!-- 당겨서 새로고침: JS 번들 로드 전에도 즉시 풀스크린 로더 (React 깜빡임 차단) -->
     <style>
+      html {
+        scrollbar-gutter: stable;
+      }
       @keyframes hh-ptr-spin {
         to {
           transform: rotate(360deg);

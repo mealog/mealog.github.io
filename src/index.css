@@ -2,6 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * 세로 스크롤바가 생겼다/사라질 때 레이아웃 폭이 바뀌지 않도록 (헤더 아이콘 줄맞춤 포함).
+ */
+html {
+  scrollbar-gutter: stable;
+}
+
 :root {
   color-scheme: dark;
   /* Galaxy S24 safe area */
