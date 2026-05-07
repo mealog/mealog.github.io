@@ -26,7 +26,29 @@ export default function FirebaseLoginCard() {
   const oauthInAppBlocked =
     typeof navigator !== "undefined" && isEmbeddedBrowserLikelyBlockingGoogleOAuth();
 
-  if (!firebaseReady) return null;
+  /** 빌드에 VITE_FIREBASE_* 가 없으면 카드가 통째로 사라져 온보딩에서 구글 로그인 영역이 비어 보임 */
+  if (!firebaseReady) {
+    return (
+      <section className="card border-amber-500/30 bg-amber-500/10 px-4 py-4">
+        <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-100">
+          <Cloud size={16} className="text-amber-400" /> Google 로그인 · 클라우드 동기화
+        </h2>
+        <p className="text-xs leading-relaxed text-amber-100/90">
+          이 빌드에는 Firebase 웹 설정이 포함되지 않았습니다. 배포라면{" "}
+          <strong className="text-amber-50">저장소 Settings → Secrets and variables → Actions</strong>에{" "}
+          <code className="rounded bg-black/25 px-1 py-0.5 text-[11px] text-amber-100/95">VITE_FIREBASE_*</code> 를
+          채운 뒤 워크플로를 다시 실행하세요. 로컬이라면{" "}
+          <code className="rounded bg-black/25 px-1 py-0.5 text-[11px]">.env.local</code> 에 같은 이름으로 넣고 개발
+          서버를 재시작해 주세요.
+        </p>
+        <p className="mt-2 text-[11px] leading-relaxed text-amber-200/75">
+          Firebase Console → Authentication →{" "}
+          <strong className="font-medium text-amber-100/85">승인된 도메인</strong>에 이 사이트 호스트(예:{" "}
+          <code className="rounded bg-black/25 px-1">mealog.github.io</code>)도 추가해야 로그인이 동작합니다.
+        </p>
+      </section>
+    );
+  }
 
   if (loading) {
     return (
