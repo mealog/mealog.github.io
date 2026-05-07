@@ -1,3 +1,4 @@
+/** IndexedDB 이름을 바꾸면 예전 `healthhealth` DB 는 브라우저에 그대로 남고, 로컬 데이터는 새 `mealog` DB 에서 빈 상태로 시작합니다. */
 import Dexie, { type Table } from "dexie";
 import type { AppSettings, HealthRecord, Meal, MealItem, User } from "../types";
 import { isTransientIndexedDbError, withIndexedDbRetry } from "./idbRetry";
@@ -74,14 +75,14 @@ export function normalizeMeal(m: Meal | (LegacyMealV1 & { items?: MealItem[] }))
   };
 }
 
-class HealthHealthDB extends Dexie {
+class MealogDB extends Dexie {
   users!: Table<User, string>;
   meals!: Table<Meal, string>;
   health!: Table<HealthRecord, string>;
   settings!: Table<AppSettings, string>;
 
   constructor() {
-    super("healthhealth");
+    super("mealog");
     this.version(1).stores({
       users: "id, name, createdAt",
       meals: "id, userId, date, slot, [userId+date], [date+slot], createdAt",
@@ -115,7 +116,7 @@ class HealthHealthDB extends Dexie {
   }
 }
 
-export const db = new HealthHealthDB();
+export const db = new MealogDB();
 
 export const SETTINGS_KEY = "settings" as const;
 

@@ -25,7 +25,7 @@ import { getFirebaseAuth, initFirebase, isFirebaseConfigured } from "../lib/fire
 import { upsertMyPublicProfile } from "../lib/friends";
 
 /** 로그인했던 흔적은 있는데 Firebase 세션이 없을 때(쿠키만 삭제 등) 로컬 DB 정리용 */
-const LAST_FB_UID_KEY = "healthhealth_last_fb_uid";
+const LAST_FB_UID_KEY = "mealog_last_fb_uid";
 
 function formatSignInError(e: unknown): string {
   const o = e as { code?: string; message?: string };

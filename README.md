@@ -82,7 +82,7 @@ npm run dev
 1. [Firebase Console](https://console.firebase.google.com/) → **본인 프로젝트** (기존과 동일) 선택  
 2. **Authentication** → **Settings** 탭 → **Authorized domains**  
 3. **도메인 추가** → `mealog.github.io` 입력 후 저장  
-4. (선택) 예전에 `*.github.io` 만 있었다면 기존 `gogojeje1022.github.io` 는 당분간 두어도 됩니다.
+4. (선택) 예전 GitHub Pages 도메인도 Authorized domains 에 남겨 두면 구 주소 북마크가 잠깐 동작할 수 있습니다.
 
 **GitHub Actions 빌드**는 새 저장소(`mealog/mealog.github.io`)에도 예전과 **동일한 이름**의 **Repository secrets** 가 필요합니다. (**Variables** 탭이 아니라 **Secrets** 입니다.)
 

@@ -24,7 +24,7 @@
       html {
         scrollbar-gutter: stable;
       }
-      @keyframes hh-ptr-spin {
+      @keyframes mealog-ptr-spin {
         to {
           transform: rotate(360deg);
         }
@@ -32,9 +32,9 @@
     </style>
     <script>
       try {
-        if (sessionStorage.getItem("hh_pull_refresh") === "1") {
+        if (sessionStorage.getItem("mealog_pull_refresh") === "1") {
           var splash = document.createElement("div");
-          splash.id = "hh-ptr-splash";
+          splash.id = "mealog-ptr-splash";
           splash.setAttribute("role", "status");
           splash.setAttribute("aria-busy", "true");
           splash.setAttribute(
@@ -46,7 +46,7 @@
             "display:flex;flex-direction:column;align-items:center;gap:14px;";
           var ring = document.createElement("div");
           ring.style.cssText =
-            "width:42px;height:42px;border:3px solid rgba(52,211,153,.2);border-top-color:rgba(52,211,153,.92);border-radius:50%;animation:hh-ptr-spin .72s linear infinite;";
+            "width:42px;height:42px;border:3px solid rgba(52,211,153,.2);border-top-color:rgba(52,211,153,.92);border-radius:50%;animation:mealog-ptr-spin .72s linear infinite;";
           var cap = document.createElement("span");
           cap.textContent = "새로고침 중…";
           cap.style.cssText =

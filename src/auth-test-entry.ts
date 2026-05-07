@@ -1,6 +1,6 @@
 /**
  * 메인 React 앱과 분리된 Firebase Google 로그인 스모크 테스트.
- * 실행: npm run dev → /healthhealth/auth-test.html (또는 로컬 base에 맞는 경로)
+ * 실행: npm run dev → /auth-test.html (로컬 base 가 `/` 아니면 `/<base>/auth-test.html`)
  */
 import { initializeApp } from "firebase/app";
 import {

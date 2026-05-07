@@ -1,6 +1,6 @@
 import { DEFAULT_THEME, THEME_IDS, type ThemeId } from "../types";
 
-const STORAGE_KEY = "healthhealth_theme";
+const STORAGE_KEY = "mealog_theme";
 
 /** localStorage 또는 알 수 없는 값(과거 "default" 등)을 안전하게 ThemeId 로 정규화. */
 export function normalizeTheme(v: unknown): ThemeId {
