@@ -284,9 +284,21 @@ function ThreadRowItem({
   return (
     <li>
       <div className={cardClass}>
-        <Link to={`/messages/${t.id}`} className="flex min-w-0 flex-1 flex-col gap-1 p-4">
+        <Link
+          to={`/messages/${t.id}`}
+          className="flex min-w-0 flex-1 flex-col gap-1 p-4"
+          aria-label={unread && !listDeleted ? `${peerLabel}, 상대에게서 온 새 메시지` : undefined}
+        >
           <div className="flex items-center gap-3">
-            <DmRowAvatar name={listDeleted ? "대화" : title} photoURL={photoURL} />
+            <div className="relative shrink-0">
+              <DmRowAvatar name={listDeleted ? "대화" : title} photoURL={photoURL} />
+              {unread && !listDeleted ? (
+                <span
+                  className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-slate-950 bg-rose-500 shadow-sm"
+                  aria-hidden
+                />
+              ) : null}
+            </div>
             <div className="min-w-0 flex-1">
               <span
                 className={cls(

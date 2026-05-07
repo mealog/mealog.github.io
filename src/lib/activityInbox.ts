@@ -2,6 +2,7 @@ import {
   addDoc,
   collection,
   doc,
+  getDocs,
   limit,
   onSnapshot,
   orderBy,
@@ -12,6 +13,7 @@ import {
 } from "firebase/firestore";
 import type { ActivityInboxDoc, ActivityInboxKind } from "../types";
 import { getFirestoreDb } from "./firebaseApp";
+import { MAX_ACTIVITY_INBOX_ITEMS } from "./syncLimits";
 
 function inboxCol(recipientUid: string) {
   return collection(getFirestoreDb(), "users", recipientUid, "activityInbox");
@@ -46,6 +48,28 @@ export async function pushActivityInboxItem(
   if (partial.commentId) body.commentId = partial.commentId;
   if (partial.snippet) body.snippet = partial.snippet;
   await addDoc(collection(fs, "users", recipientUid, "activityInbox"), body);
+  try {
+    await pruneActivityInboxToLimit(recipientUid);
+  } catch (e) {
+    console.warn("[activityInbox] prune overflow failed", e);
+  }
+}
+
+/** 알림 개수 상한 — 초과분은 createdAt 오래된 순으로 삭제 */
+async function pruneActivityInboxToLimit(recipientUid: string): Promise<void> {
+  const fs = getFirestoreDb();
+  const col = inboxCol(recipientUid);
+  const overfetch = Math.min(MAX_ACTIVITY_INBOX_ITEMS + 200, 500);
+  for (let i = 0; i < 25; i++) {
+    const q = query(col, orderBy("createdAt", "desc"), limit(overfetch));
+    const snap = await getDocs(q);
+    if (snap.docs.length <= MAX_ACTIVITY_INBOX_ITEMS) return;
+    const batch = writeBatch(fs);
+    for (const d of snap.docs.slice(MAX_ACTIVITY_INBOX_ITEMS)) {
+      batch.delete(d.ref);
+    }
+    await batch.commit();
+  }
 }
 
 export function subscribeActivityInbox(
@@ -53,7 +77,11 @@ export function subscribeActivityInbox(
   cb: (rows: ActivityInboxDoc[]) => void,
   onErr?: (e: unknown) => void,
 ): Unsubscribe {
-  const q = query(inboxCol(recipientUid), orderBy("createdAt", "desc"), limit(36));
+  const q = query(
+    inboxCol(recipientUid),
+    orderBy("createdAt", "desc"),
+    limit(MAX_ACTIVITY_INBOX_ITEMS),
+  );
   return onSnapshot(
     q,
     (snap) => {

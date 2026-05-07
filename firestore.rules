@@ -209,8 +209,9 @@ service cloud.firestore {
         && request.resource.data.senderUid == me()
         && request.resource.data.text is string
         && request.resource.data.text.size() > 0
-        && request.resource.data.text.size() <= 4000;
-      allow update, delete: if false;
+        && request.resource.data.text.size() <= 2000;
+      allow delete: if signedIn() && dmMessageReadAllowed(threadId);
+      allow update: if false;
     }
 
     // ----- 공개 프로필 -----

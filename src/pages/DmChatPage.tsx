@@ -10,6 +10,7 @@ import {
   ensureDmThreadWith,
   markDmThreadDeletedForMe,
   markDmThreadReadForMe,
+  MAX_DM_MESSAGE_CHARS,
   otherUidInDmThreadId,
   sendDmMessage,
   subscribeDmMessages,
@@ -257,33 +258,40 @@ export default function DmChatPage() {
             {sendHint}
           </p>
         )}
-        <div className="flex gap-2">
-          <textarea
-            value={text}
-            onChange={(e) => {
-              setText(e.target.value);
-              setSendHint(null);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void submit();
-              }
-            }}
-            rows={1}
-            placeholder="메시지 보내기…"
-            disabled={!canSend}
-            className="input max-h-32 min-h-[44px] min-w-0 flex-1 resize-y text-sm disabled:opacity-50"
-          />
-          <button
-            type="button"
-            disabled={sending || !text.trim() || !canSend}
-            onClick={() => void submit()}
-            className="btn-primary shrink-0 self-end px-4 py-3 disabled:opacity-50"
-            aria-label="보내기"
-          >
-            {sending ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
-          </button>
+        <div className="flex flex-col gap-1">
+          <div className="flex gap-2">
+            <textarea
+              value={text}
+              maxLength={MAX_DM_MESSAGE_CHARS}
+              onChange={(e) => {
+                setText(e.target.value);
+                setSendHint(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void submit();
+                }
+              }}
+              rows={1}
+              placeholder="메시지 보내기…"
+              disabled={!canSend}
+              className="input max-h-32 min-h-[44px] min-w-0 flex-1 resize-y text-sm disabled:opacity-50"
+              aria-describedby="dm-char-count"
+            />
+            <button
+              type="button"
+              disabled={sending || !text.trim() || !canSend}
+              onClick={() => void submit()}
+              className="btn-primary shrink-0 self-end px-4 py-3 disabled:opacity-50"
+              aria-label="보내기"
+            >
+              {sending ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+            </button>
+          </div>
+          <p id="dm-char-count" className="pr-1 text-right text-[10px] tabular-nums text-slate-500">
+            {text.length} / {MAX_DM_MESSAGE_CHARS}
+          </p>
         </div>
       </div>
     </div>

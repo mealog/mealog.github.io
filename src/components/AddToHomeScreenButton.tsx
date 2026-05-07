@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Home, Plus, X } from "lucide-react";
+import { Home, Loader2, Plus, X } from "lucide-react";
 import { cls } from "../lib/utils";
 
 type BeforeInstallPromptEvent = Event & {
@@ -27,6 +27,21 @@ function samsungInternetLikely(): boolean {
   return /SamsungBrowser/i.test(navigator.userAgent);
 }
 
+/** beforeinstallprompt 가 deferredRef 에 잡힐 때까지 폴링 (크롬 첫 로드·SW 등록 직후 이벤트 지연 대응) */
+async function waitForDeferredInstallPrompt(
+  getDeferred: () => BeforeInstallPromptEvent | null,
+  maxMs: number,
+  stepMs: number,
+): Promise<BeforeInstallPromptEvent | null> {
+  const end = Date.now() + maxMs;
+  while (Date.now() < end) {
+    const ev = getDeferred();
+    if (ev) return ev;
+    await new Promise((r) => setTimeout(r, stepMs));
+  }
+  return getDeferred();
+}
+
 /** 집+플러스 아이콘 — 피드 상단에서 홈 화면(PWA) 추가 유도 */
 function HomePlusGlyph({ className }: { className?: string }) {
   return (
@@ -44,9 +59,11 @@ function HomePlusGlyph({ className }: { className?: string }) {
 
 export default function AddToHomeScreenButton({ className }: { className?: string }) {
   const [modalOpen, setModalOpen] = useState(false);
+  const [installBusy, setInstallBusy] = useState(false);
   const deferredRef = useRef<BeforeInstallPromptEvent | null>(null);
 
   useEffect(() => {
+    void navigator.serviceWorker?.ready.catch(() => {});
     const onBip = (e: Event) => {
       e.preventDefault();
       deferredRef.current = e as BeforeInstallPromptEvent;
@@ -70,7 +87,24 @@ export default function AddToHomeScreenButton({ className }: { className?: strin
   }
 
   async function onAddClick() {
-    const ev = deferredRef.current;
+    if (iosLikely()) {
+      setModalOpen(true);
+      return;
+    }
+
+    let ev = deferredRef.current;
+    if (!ev) {
+      setInstallBusy(true);
+      try {
+        await navigator.serviceWorker?.ready.catch(() => {});
+        ev =
+          deferredRef.current ??
+          (await waitForDeferredInstallPrompt(() => deferredRef.current, 12_000, 100));
+      } finally {
+        setInstallBusy(false);
+      }
+    }
+
     if (ev) {
       deferredRef.current = null;
       try {
@@ -89,30 +123,36 @@ export default function AddToHomeScreenButton({ className }: { className?: strin
       <button
         type="button"
         onClick={() => void onAddClick()}
+        disabled={installBusy}
+        aria-busy={installBusy}
         className={cls(
-          "btn-secondary inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap py-2 pl-2.5 pr-2.5 text-sm sm:pl-3 sm:pr-3",
+          "btn-secondary inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap py-2 pl-2.5 pr-2.5 text-sm sm:pl-3 sm:pr-3 disabled:opacity-70",
           className,
         )}
         title="휴대폰 홈 화면에 밀로그 추가"
         aria-label="홈 화면에 앱 추가"
       >
-        <HomePlusGlyph />
-        <span className="max-[359px]:sr-only">홈에 추가</span>
+        {installBusy ? <Loader2 size={18} className="h-[18px] w-[18px] shrink-0 animate-spin" /> : <HomePlusGlyph />}
+        <span className="max-[359px]:sr-only">{installBusy ? "설치 준비…" : "홈에 추가"}</span>
       </button>
 
       {modalOpen ? (
         <div
-          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/65 p-4 backdrop-blur-[2px] sm:items-center"
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/65 p-3 backdrop-blur-[2px] sm:items-center sm:p-4"
+          style={{
+            paddingTop: "max(0.75rem, env(safe-area-inset-top, 0px))",
+            paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))",
+          }}
           onClick={() => setModalOpen(false)}
           role="dialog"
           aria-modal="true"
           aria-labelledby="add-home-title"
         >
           <div
-            className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-950 p-4 shadow-xl"
+            className="flex max-h-[min(88dvh,calc(100dvh-1.5rem))] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 shadow-xl sm:max-h-[min(85vh,36rem)]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-800 px-4 py-3">
               <h2 id="add-home-title" className="text-base font-semibold text-slate-100">
                 홈 화면에 추가
               </h2>
@@ -125,7 +165,8 @@ export default function AddToHomeScreenButton({ className }: { className?: strin
                 <X size={18} />
               </button>
             </div>
-            <div className="space-y-3 text-sm leading-relaxed text-slate-300">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-3 [-webkit-overflow-scrolling:touch]">
+              <div className="space-y-3 text-sm leading-relaxed text-slate-300">
               <p>
                 <strong className="text-slate-100">자동 설치:</strong> 구글·삼성 인터넷처럼{" "}
                 <strong className="text-slate-100">크로미움 계열</strong> 브라우저는 PWA 조건(HTTPS, 매니페스트
@@ -218,6 +259,7 @@ export default function AddToHomeScreenButton({ className }: { className?: strin
               설치를 막은 상태일 수 있어요. 바로가기 없이도 하단 내비의 <strong className="text-slate-400">식단</strong>에서
               달력을 열 수 있어요.
             </p>
+            </div>
           </div>
         </div>
       ) : null}

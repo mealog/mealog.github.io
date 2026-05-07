@@ -11,6 +11,7 @@ import {
   runTransaction,
   setDoc,
   updateDoc,
+  writeBatch,
   where,
   type Query,
   type QuerySnapshot,
@@ -19,6 +20,9 @@ import {
 import type { DmMessageDoc, DmThreadDoc } from "../types";
 import { getFirebaseAuth, getFirestoreDb, isFirestoreMobileUa } from "./firebaseApp";
 import { isCalendarConnectedPairFromServer } from "./friends";
+import { MAX_DM_MESSAGES_PER_THREAD, MAX_DM_MESSAGE_CHARS } from "./syncLimits";
+
+export { MAX_DM_MESSAGE_CHARS, MAX_DM_MESSAGES_PER_THREAD } from "./syncLimits";
 
 /** Firebase/Firestore 에서 넘어오는 메시지 문자열 (객체 래핑·커스텀 에러 대응) */
 function firebaseErrText(e: unknown): string {
@@ -529,8 +533,8 @@ export function subscribeDmMessages(
     unsub?.();
     const col = collection(fs, "dmThreads", threadId, "messages");
     const q = plainFallback
-      ? query(col, limit(100))
-      : query(col, orderBy("createdAt", "desc"), limit(100));
+      ? query(col, limit(MAX_DM_MESSAGES_PER_THREAD))
+      : query(col, orderBy("createdAt", "desc"), limit(MAX_DM_MESSAGES_PER_THREAD));
 
     unsub = onSnapshot(
       q,
@@ -578,7 +582,9 @@ export async function sendDmMessage(threadId: string, rawText: string): Promise<
   const me = requireUser();
   const trimmed = rawText.trim();
   if (!trimmed) throw new Error("메시지를 입력해 주세요.");
-  if (trimmed.length > 4000) throw new Error("메시지가 너무 깁니다.");
+  if (trimmed.length > MAX_DM_MESSAGE_CHARS) {
+    throw new Error(`메시지는 ${MAX_DM_MESSAGE_CHARS}자까지 보낼 수 있어요.`);
+  }
 
   const fs = getFirestoreDb();
   const tref = doc(fs, "dmThreads", threadId);
@@ -635,6 +641,33 @@ export async function sendDmMessage(threadId: string, rawText: string): Promise<
     );
   } catch (e) {
     console.warn("[dm] read state after send failed", e);
+  }
+
+  try {
+    await pruneDmThreadMessagesIfNeeded(threadId);
+  } catch (e) {
+    console.warn("[dm] prune messages after send failed", e);
+  }
+}
+
+/** 스레드당 메시지 개수 상한 — 초과분은 오래된 메시지부터 삭제 */
+async function pruneDmThreadMessagesIfNeeded(threadId: string): Promise<void> {
+  const fs = getFirestoreDb();
+  const col = collection(fs, "dmThreads", threadId, "messages");
+  const overfetch = Math.min(MAX_DM_MESSAGES_PER_THREAD + 150, 500);
+  for (let i = 0; i < 30; i++) {
+    let snap;
+    try {
+      snap = await getDocs(query(col, orderBy("createdAt", "desc"), limit(overfetch)));
+    } catch {
+      return;
+    }
+    if (snap.docs.length <= MAX_DM_MESSAGES_PER_THREAD) return;
+    const batch = writeBatch(fs);
+    for (const d of snap.docs.slice(MAX_DM_MESSAGES_PER_THREAD)) {
+      batch.delete(d.ref);
+    }
+    await batch.commit();
   }
 }
 
