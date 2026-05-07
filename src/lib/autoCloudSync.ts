@@ -83,9 +83,12 @@ export function requestAutoCloudSync(options?: { immediate?: boolean }): void {
 export function ensureAutoCloudSyncListeners(): void {
   if (typeof window === "undefined" || listenersStarted) return;
   listenersStarted = true;
-  document.addEventListener("visibilitychange", () => {
+  const onVisible = () => {
     if (document.visibilityState === "visible") {
       requestAutoCloudSync({ immediate: true });
     }
-  });
+  };
+  document.addEventListener("visibilitychange", onVisible);
+  /** 오프라인 이후 연결되면 한 번 즉시 맞춤(조용히 실패한 동기화 복구) */
+  window.addEventListener("online", () => requestAutoCloudSync({ immediate: true }));
 }
