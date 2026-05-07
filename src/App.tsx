@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, getSettings, patchSettings, runDexie } from "./lib/db";
@@ -91,9 +91,16 @@ export default function App() {
       !isInviteRoute
     );
 
+  /** 같은 pathname 등이라도 `<main>` DOM 노드가 바뀌면(ref 재바인딩) 세대가 증가 — 리스너가 새 노드에 붙음 */
+  const mainRef = useRef<HTMLElement | null>(null);
+  const [mainAttachGen, setMainAttachGen] = useState(0);
+  const bindMainRef = useCallback((node: HTMLElement | null) => {
+    mainRef.current = node;
+    setMainAttachGen((n) => n + 1);
+  }, []);
+
   /** 게이트로 조기 return 하기 전에 호출해야 함 — 그렇지 않으면 React #310 (훅 개수 불일치) */
-  const mainRef = useRef<HTMLElement>(null);
-  const ptr = usePullToRefresh(mainRef, pullRefreshEnabled);
+  const ptr = usePullToRefresh(mainRef, pullRefreshEnabled, `${location.pathname}:${mainAttachGen}`);
 
   const pullNorm = Math.min(1, ptr.pullPx / PULL_TO_REFRESH_THRESHOLD_PX);
   const visualNorm = Math.min(1, ptr.pullPx / PULL_TO_REFRESH_MAX_VISUAL_PX);
@@ -134,38 +141,26 @@ export default function App() {
     );
   }
 
-  if (firebaseReady && authLoading) {
-    return (
-      <div className="app-shell flex h-full items-center justify-center text-slate-500">
-        로그인 확인 중…
-      </div>
-    );
-  }
-
   const { settings, userCount } = gate;
   const needsOnboarding = shouldRedirectToOnboarding(settings, userCount);
 
-  if (needsHydrationWait && !hydrationTimedOut) {
-    return (
-      <div className="app-shell flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-slate-500">
-        <p className="text-sm text-slate-300">계정 데이터를 불러오는 중…</p>
-        <p className="text-xs text-slate-500">
-          같은 계정으로 다른 주소에서 쓰던 기록은 잠시 후 여기로 맞춰져요.
-        </p>
-      </div>
-    );
-  }
+  /** 예전(d561e64)처럼 `<main>` 을 유지 — 인증·클라우드 대기를 전체 화면 return 으로 바꾸면 PTR 리스너가 떨어진 DOM 에 붙는 버그가 난다 */
+  const blockingAuth = firebaseReady && authLoading;
+  const blockingHydration = needsHydrationWait && !hydrationTimedOut;
 
-  // 온보딩 페이지에서 사용자가 닉네임·아바타를 다듬고 있는 동안에는 클라우드
-  // 동기화로 user/onboarded 가 채워져도 자동으로 메인으로 이탈하지 않는다.
-  // (이전엔 `if (!needsOnboarding && isOnboardingRoute) { Navigate("/") }` 가
-  // 있었지만, 첫 로그인 직후 클라우드에서 기존 프로필이 들어오면 사용자가
-  // 아직 입력 중인데도 페이지가 휙 넘어가는 버그를 일으켰다. 명시적으로
-  // "시작하기" 를 눌러야만 finish() 가 navigate 하도록 단순화.)
+  // 인증·하이드레이션 스플래시 동안에는 온보딩 리다이렉트를 미룸(기존 조기 return 과 동일 순서)
+  if (!blockingAuth && !blockingHydration) {
+    // 온보딩 페이지에서 사용자가 닉네임·아바타를 다듬고 있는 동안에는 클라우드
+    // 동기화로 user/onboarded 가 채워져도 자동으로 메인으로 이탈하지 않는다.
+    // (이전엔 `if (!needsOnboarding && isOnboardingRoute) { Navigate("/") }` 가
+    // 있었지만, 첫 로그인 직후 클라우드에서 기존 프로필이 들어오면 사용자가
+    // 아직 입력 중인데도 페이지가 휙 넘어가는 버그를 일으켰다. 명시적으로
+    // "시작하기" 를 눌러야만 finish() 가 navigate 하도록 단순화.)
 
-  // 클라우드 복원: 온보딩 전에도 설정에서 Google 로그인 가능
-  if (needsOnboarding && !isOnboardingRoute && !isSettingsRoute && !isInviteRoute) {
-    return <Navigate to="/onboarding" replace />;
+    // 클라우드 복원: 온보딩 전에도 설정에서 Google 로그인 가능
+    if (needsOnboarding && !isOnboardingRoute && !isSettingsRoute && !isInviteRoute) {
+      return <Navigate to="/onboarding" replace />;
+    }
   }
 
   return (
@@ -179,7 +174,7 @@ export default function App() {
           }}
         >
           <main
-            ref={mainRef}
+            ref={bindMainRef}
             className="relative min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-auto overflow-x-hidden bg-slate-950 pb-24 [scrollbar-gutter:stable] [-webkit-overflow-scrolling:touch]"
           >
           {/* 풀투새로고침: 레이아웃 높이 0 유지 · absolute 로 가로 중앙 정렬 · motion 만 별도 레이어 */}
@@ -225,29 +220,42 @@ export default function App() {
             </div>
           </div>
 
-            <AppErrorBoundary>
-              <div>
-                <Routes>
-                  {/* 첫 화면은 피드. 기존 달력 홈은 /home 으로 이동 */}
-                  <Route path="/" element={<FeedPage />} />
-                  <Route path="/home" element={<HomePage />} />
-                  <Route path="/day/:date" element={<DayPage />} />
-                  <Route path="/health" element={<HealthPage />} />
-                  <Route path="/settings" element={<SettingsPage />} />
-                  <Route path="/onboarding" element={<OnboardingPage />} />
-                  <Route path="/friends" element={<FriendsPage />} />
-                  <Route path="/friends/invite/c/:inviteCode" element={<InviteCodePage />} />
-                  <Route path="/friends/:uid" element={<FriendProfilePage />} />
-                  <Route path="/friends/:uid/day/:date" element={<FriendDayPage />} />
-                  <Route path="/notifications" element={<NotificationsPage />} />
-                  <Route path="/messages" element={<MessagesPage />} />
-                  <Route path="/messages/:threadId" element={<DmChatPage />} />
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
+            {blockingHydration ? (
+              <div className="flex min-h-full flex-col items-center justify-center gap-2 bg-slate-950 px-6 py-12 text-center text-slate-500">
+                <p className="text-sm text-slate-300">계정 데이터를 불러오는 중…</p>
+                <p className="text-xs text-slate-500">
+                  같은 계정으로 다른 주소에서 쓰던 기록은 잠시 후 여기로 맞춰져요.
+                </p>
               </div>
-            </AppErrorBoundary>
+            ) : blockingAuth ? (
+              <div className="flex min-h-full flex-col items-center justify-center bg-slate-950 text-slate-500">
+                로그인 확인 중…
+              </div>
+            ) : (
+              <AppErrorBoundary>
+                <div>
+                  <Routes>
+                    {/* 첫 화면은 피드. 기존 달력 홈은 /home 으로 이동 */}
+                    <Route path="/" element={<FeedPage />} />
+                    <Route path="/home" element={<HomePage />} />
+                    <Route path="/day/:date" element={<DayPage />} />
+                    <Route path="/health" element={<HealthPage />} />
+                    <Route path="/settings" element={<SettingsPage />} />
+                    <Route path="/onboarding" element={<OnboardingPage />} />
+                    <Route path="/friends" element={<FriendsPage />} />
+                    <Route path="/friends/invite/c/:inviteCode" element={<InviteCodePage />} />
+                    <Route path="/friends/:uid" element={<FriendProfilePage />} />
+                    <Route path="/friends/:uid/day/:date" element={<FriendDayPage />} />
+                    <Route path="/notifications" element={<NotificationsPage />} />
+                    <Route path="/messages" element={<MessagesPage />} />
+                    <Route path="/messages/:threadId" element={<DmChatPage />} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                  </Routes>
+                </div>
+              </AppErrorBoundary>
+            )}
           </main>
-          {!isOnboardingRoute && <BottomNav />}
+          {!isOnboardingRoute && !blockingHydration && !blockingAuth && <BottomNav />}
         </div>
       </FeedStreamProvider>
     </DmRealtimeProvider>

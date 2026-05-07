@@ -36,11 +36,14 @@ export type PullToRefreshGesture = {
  * 스크롤 최상단에서 아래로 당겼다 떼면 `location.reload()`.
  *
  * 리스너는 스크롤 컨테이너(`<main>`) 자체에만 붙인다(window 캡처 X).
- * 예전 healthhealth 배포에서 PTR 가 안정적으로 되던 방식과 동일하다.
+ *
+ * `rebindKey`: `<main>` 이 조건부 렌더로 언마운트됐다 다시 붙을 때(예: 계정 복원 로딩 화면),
+ * enabled 와 ref 객체는 그대로여도 effect 가 다시 돌아 새 DOM 에 리스너를 붙이게 한다.
  */
 export function usePullToRefresh(
   scrollEl: RefObject<HTMLElement | null>,
   enabled: boolean,
+  rebindKey: string,
 ): PullToRefreshGesture {
   const [pullPx, setPullPx] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -155,13 +158,21 @@ export function usePullToRefresh(
       };
     };
 
-    let cleanup = setup();
+    let cleanup: (() => void) | undefined;
     let raf = 0;
-    if (!cleanup) {
-      raf = requestAnimationFrame(() => {
-        cleanup = setup();
-      });
-    }
+    const retryAttach = () => {
+      cleanup?.();
+      cleanup = setup();
+      if (!cleanup) {
+        raf = requestAnimationFrame(() => {
+          cleanup?.();
+          cleanup = setup();
+          raf = 0;
+        });
+      }
+    };
+
+    retryAttach();
 
     return () => {
       cancelAnimationFrame(raf);
@@ -169,7 +180,7 @@ export function usePullToRefresh(
       settleRafRef.current = 0;
       cleanup?.();
     };
-  }, [enabled, scrollEl]);
+  }, [enabled, scrollEl, rebindKey]);
 
   return { pullPx, isDragging, armed, pendingReload };
 }
