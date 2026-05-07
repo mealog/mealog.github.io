@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate, useSearchParams } from "react-router-do
 import { ArrowLeft, Loader2, MessageCircle } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useDmRealtime } from "../contexts/DmRealtimeContext";
-import { getPublicProfile } from "../lib/friends";
+import { resolvePeerIdentityForDm } from "../lib/friends";
 import {
   ensureDmThreadWith,
   otherParticipantUid,
@@ -64,9 +64,9 @@ export default function MessagesPage() {
       const fetched = new Map<string, string>();
       for (const p of uniq) {
         if (cancelled) return;
-        const prof = await getPublicProfile(p);
+        const id = await resolvePeerIdentityForDm(p, user.uid!);
         if (cancelled) return;
-        fetched.set(p, prof?.displayName ?? p.slice(0, 6));
+        fetched.set(p, id.displayName ?? p.slice(0, 6));
       }
       if (cancelled) return;
       setPeerNames((prev) => {

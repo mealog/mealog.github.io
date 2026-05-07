@@ -236,6 +236,116 @@ export async function getPublicProfile(uid: string): Promise<PublicProfile | nul
   return snap.data() as PublicProfile;
 }
 
+/** DM·목록에서 보여 줄 상대 표시 정보 — shares 의 이름/사진이 더 최근이면 공개 프로필보다 우선 */
+export type PeerDmIdentity = { displayName: string; photoURL?: string };
+
+function pickLatestPeerDmIdentity(
+  peerUid: string,
+  pub: PublicProfile | null,
+  shares: Array<Share | null>,
+): PeerDmIdentity {
+  type Cand = { name: string; photo?: string; at: number };
+  const candidates: Cand[] = [];
+  if (pub?.displayName?.trim()) {
+    const ph =
+      typeof pub.photoURL === "string" && pub.photoURL.trim() !== ""
+        ? pub.photoURL.trim()
+        : undefined;
+    candidates.push({ name: pub.displayName.trim(), photo: ph, at: pub.updatedAt ?? 0 });
+  }
+  for (const sh of shares) {
+    if (!sh) continue;
+    const peerIsOwner = sh.ownerUid === peerUid;
+    const name = (peerIsOwner ? sh.ownerName : sh.viewerName)?.trim();
+    if (!name) continue;
+    const raw = peerIsOwner ? sh.ownerPhotoURL : sh.viewerPhotoURL;
+    const photo =
+      typeof raw === "string" && raw.trim() !== "" ? raw.trim() : undefined;
+    candidates.push({ name, photo, at: sh.updatedAt ?? 0 });
+  }
+  if (candidates.length === 0) return { displayName: peerUid.slice(0, 6) };
+  candidates.sort((a, b) => b.at - a.at);
+  const best = candidates[0]!;
+  return { displayName: best.name, photoURL: best.photo };
+}
+
+export async function resolvePeerIdentityForDm(
+  peerUid: string,
+  myUid: string,
+): Promise<PeerDmIdentity> {
+  const fs = getFirestoreDb();
+  const [pubSnap, s1, s2] = await Promise.all([
+    getDoc(doc(fs, "publicProfiles", peerUid)),
+    getDoc(doc(fs, "shares", shareIdFor(peerUid, myUid))),
+    getDoc(doc(fs, "shares", shareIdFor(myUid, peerUid))),
+  ]);
+  const pub = pubSnap.exists() ? (pubSnap.data() as PublicProfile) : null;
+  const shares: Array<Share | null> = [
+    s1.exists() ? ({ id: s1.id, ...s1.data() } as Share) : null,
+    s2.exists() ? ({ id: s2.id, ...s2.data() } as Share) : null,
+  ];
+  return pickLatestPeerDmIdentity(peerUid, pub, shares);
+}
+
+/** 채팅 헤더 등 — 상대 프로필·맞팔 shares 문서 변경 시 즉시 반영 */
+export function subscribePeerIdentityForDm(
+  peerUid: string,
+  myUid: string,
+  onNext: (v: PeerDmIdentity) => void,
+): Unsubscribe {
+  const fs = getFirestoreDb();
+  let pub: PublicProfile | null = null;
+  let shareForward: Share | null = null;
+  let shareReverse: Share | null = null;
+
+  function emit() {
+    onNext(pickLatestPeerDmIdentity(peerUid, pub, [shareForward, shareReverse]));
+  }
+
+  const u1 = onSnapshot(
+    doc(fs, "publicProfiles", peerUid),
+    (snap) => {
+      pub = snap.exists() ? (snap.data() as PublicProfile) : null;
+      emit();
+    },
+    () => {
+      pub = null;
+      emit();
+    },
+  );
+  const u2 = onSnapshot(
+    doc(fs, "shares", shareIdFor(peerUid, myUid)),
+    (snap) => {
+      shareForward = snap.exists()
+        ? ({ id: snap.id, ...snap.data() } as Share)
+        : null;
+      emit();
+    },
+    () => {
+      shareForward = null;
+      emit();
+    },
+  );
+  const u3 = onSnapshot(
+    doc(fs, "shares", shareIdFor(myUid, peerUid)),
+    (snap) => {
+      shareReverse = snap.exists()
+        ? ({ id: snap.id, ...snap.data() } as Share)
+        : null;
+      emit();
+    },
+    () => {
+      shareReverse = null;
+      emit();
+    },
+  );
+  return () => {
+    u1();
+    u2();
+    u3();
+  };
+}
+
 // ---- follow 신청 --------------------------------------------------------
 
 export async function sendFollowRequest(

@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { doc, getDoc } from "firebase/firestore";
 import { ArrowLeft, Loader2, Send } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
-import { getPublicProfile, isCalendarConnectedPairFromServer } from "../lib/friends";
+import { isCalendarConnectedPairFromServer, subscribePeerIdentityForDm } from "../lib/friends";
 import {
   dmErrorMessageForUi,
   ensureDmThreadWith,
@@ -27,7 +27,9 @@ export default function DmChatPage() {
   /** 참가자로 확인된 방에서는 메시지 전송 허용(달력 연결은 안내용) */
   const [canSend, setCanSend] = useState(false);
   const [calendarLinked, setCalendarLinked] = useState(true);
-  const [peerLabel, setPeerLabel] = useState<string>("대화");
+  const [peerIdentity, setPeerIdentity] = useState<{ displayName: string; photoURL?: string }>({
+    displayName: "대화",
+  });
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   /** 전송 실패 시 짧은 안내(성공 시 자동 제거) */
@@ -75,18 +77,19 @@ export default function DmChatPage() {
       }
       if (cancelled) return;
       setCalendarLinked(linked);
-      try {
-        const prof = await getPublicProfile(peer);
-        if (cancelled) return;
-        setPeerLabel(prof?.displayName ?? peer.slice(0, 6));
-      } catch {
-        if (!cancelled) setPeerLabel(peer.slice(0, 6));
-      }
     })();
     return () => {
       cancelled = true;
     };
   }, [threadId, user?.uid]);
+
+  useEffect(() => {
+    if (!allowed || !threadId || !user?.uid) return;
+    const peer = otherUidInDmThreadId(threadId, user.uid);
+    if (!peer) return;
+    const unsub = subscribePeerIdentityForDm(peer, user.uid, setPeerIdentity);
+    return () => unsub();
+  }, [allowed, threadId, user?.uid]);
 
   useEffect(() => {
     if (!threadId || !allowed) return;
@@ -154,18 +157,19 @@ export default function DmChatPage() {
   }
 
   return (
-    <div className="flex flex-col px-4 pb-6 pt-4">
-      <header className="mb-3 flex shrink-0 items-center gap-2 border-b border-slate-800 pb-3">
+    <div className="flex h-[calc(100dvh-7rem)] max-h-[calc(100dvh-7rem)] flex-col overflow-hidden px-4 pb-4 pt-4">
+      <header className="flex shrink-0 items-center gap-2 border-b border-slate-800 bg-slate-950 pb-3">
         <button type="button" onClick={() => navigate("/messages")} className="rounded-lg p-2 hover:bg-slate-800">
           <ArrowLeft size={20} />
         </button>
+        <PeerAvatar photoURL={peerIdentity.photoURL} name={peerIdentity.displayName} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-slate-100">{peerLabel}</p>
+          <p className="truncate text-sm font-semibold text-slate-100">{peerIdentity.displayName}</p>
           <p className="text-[11px] text-slate-500">DM</p>
         </div>
       </header>
 
-      <div className="flex min-h-[min(72dvh,calc(100dvh-13.5rem))] flex-col gap-2 overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-y-contain py-2 [-webkit-overflow-scrolling:touch]">
         {messages.length === 0 ? (
           <p className="py-8 text-center text-xs text-slate-500">첫 메시지를 남겨 보세요.</p>
         ) : (
@@ -187,7 +191,7 @@ export default function DmChatPage() {
         <div ref={bottomRef} />
       </div>
 
-      <div className="mt-3 flex shrink-0 flex-col gap-1 border-t border-slate-800 pt-3">
+      <div className="flex shrink-0 flex-col gap-1 border-t border-slate-800 bg-slate-950 pt-3">
         {!calendarLinked && (
           <p className="text-[11px] text-amber-400/90">
             달력 공유가 일시적으로 확인되지 않아요. 메시지는 보낼 수 있으며, 문제가 계속되면 친구 탭에서 공유를 확인해 주세요.
@@ -227,6 +231,24 @@ export default function DmChatPage() {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function PeerAvatar({ name, photoURL }: { name: string; photoURL?: string }) {
+  if (photoURL) {
+    return (
+      <img
+        src={photoURL}
+        alt=""
+        className="h-10 w-10 shrink-0 rounded-full border border-slate-800 object-cover"
+      />
+    );
+  }
+  const initial = name ? (Array.from(name)[0]?.toUpperCase() ?? "?") : "?";
+  return (
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-800 bg-slate-800 text-sm font-semibold text-white">
+      {initial}
     </div>
   );
 }
