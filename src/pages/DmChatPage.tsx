@@ -157,7 +157,7 @@ export default function DmChatPage() {
   }
 
   return (
-    <div className="flex h-[calc(100dvh-7rem)] max-h-[calc(100dvh-7rem)] flex-col overflow-hidden px-4 pb-4 pt-4">
+    <div className="flex h-[calc(100dvh-4.25rem)] max-h-[calc(100dvh-4.25rem)] w-full flex-col overflow-hidden pl-2 pr-1 pt-2 pb-[max(0.625rem,env(safe-area-inset-bottom,0px))]">
       <header className="flex shrink-0 items-center gap-2 border-b border-slate-800 bg-slate-950 pb-3">
         <button type="button" onClick={() => navigate("/messages")} className="rounded-lg p-2 hover:bg-slate-800">
           <ArrowLeft size={20} />
@@ -169,7 +169,7 @@ export default function DmChatPage() {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-y-contain py-2 [-webkit-overflow-scrolling:touch]">
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-y-auto py-2 pl-0.5 pr-0 [-webkit-overflow-scrolling:touch]">
         {messages.length === 0 ? (
           <p className="py-8 text-center text-xs text-slate-500">첫 메시지를 남겨 보세요.</p>
         ) : (
@@ -191,7 +191,7 @@ export default function DmChatPage() {
         <div ref={bottomRef} />
       </div>
 
-      <div className="flex shrink-0 flex-col gap-1 border-t border-slate-800 bg-slate-950 pt-3">
+      <div className="flex shrink-0 flex-col gap-1 border-t border-slate-800 bg-slate-950 pt-2">
         {!calendarLinked && (
           <p className="text-[11px] text-amber-400/90">
             달력 공유가 일시적으로 확인되지 않아요. 메시지는 보낼 수 있으며, 문제가 계속되면 친구 탭에서 공유를 확인해 주세요.

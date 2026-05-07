@@ -24,6 +24,23 @@ function dampVisual(rawPull: number): number {
   return Math.min(Math.max(0, d), PULL_TO_REFRESH_MAX_VISUAL_PX);
 }
 
+/** 터치 지점에서 위로 올라가며, 말풍선·달력 등 안쪽 스크롤 영역을 찾는다 */
+function findNearestScrollableInsideMain(
+  start: Element | null,
+  boundary: HTMLElement,
+): HTMLElement | null {
+  let cur: Element | null = start;
+  for (; cur && boundary.contains(cur); cur = cur.parentElement) {
+    if (!(cur instanceof HTMLElement)) continue;
+    if (cur === boundary) break;
+    const st = getComputedStyle(cur);
+    const oy = st.overflowY;
+    if (oy !== "auto" && oy !== "scroll" && oy !== "overlay") continue;
+    if (cur.scrollHeight > cur.clientHeight + 2) return cur;
+  }
+  return null;
+}
+
 export type PullToRefreshGesture = {
   /** 페이지 상단 패딩으로 내려 보이는 양 */
   pullPx: number;
@@ -65,6 +82,8 @@ export function usePullToRefresh(
 
     let touchActive = false;
     let startY = 0;
+    /** DM 채팅 등 메인 안쪽 스크롤 — 여기가 최상단이 아니면 당겨서 새로고침 비활성 */
+    let gateScroller: HTMLElement | null = null;
 
     const passiveOpt: AddEventListenerOptions = { passive: true };
     const blockingOpt: AddEventListenerOptions = { passive: false };
@@ -73,7 +92,12 @@ export function usePullToRefresh(
       const el = scrollEl.current;
       if (!el) return undefined;
 
-      const top = () => el.scrollTop <= 2;
+      const allAtTop = () => {
+        if (el.scrollTop > 2) return false;
+        const gate = gateScroller;
+        if (gate && gate !== el && gate.scrollTop > 2) return false;
+        return true;
+      };
 
       const settleToZero = () => {
         cancelAnimationFrame(settleRafRef.current);
@@ -89,7 +113,17 @@ export function usePullToRefresh(
 
       const onTouchStart: EventListener = (e) => {
         const te = e as TouchEvent;
-        if (!top()) return;
+        gateScroller = null;
+        if (el.scrollTop > 2) return;
+        const tgt = te.target;
+        const targetEl = tgt instanceof Element ? tgt : null;
+        const nested =
+          targetEl ? findNearestScrollableInsideMain(targetEl, el) : null;
+        gateScroller = nested ?? el;
+        if (gateScroller.scrollTop > 2) {
+          gateScroller = null;
+          return;
+        }
         cancelAnimationFrame(settleRafRef.current);
         settleRafRef.current = 0;
         touchActive = true;
@@ -102,9 +136,10 @@ export function usePullToRefresh(
       const onTouchMove: EventListener = (e) => {
         const te = e as TouchEvent;
         if (!touchActive) return;
-        if (!top()) {
+        if (!allAtTop()) {
           touchActive = false;
           gestureMaxRawRef.current = 0;
+          gateScroller = null;
           settleToZero();
           return;
         }
@@ -126,7 +161,8 @@ export function usePullToRefresh(
         const maxRaw = gestureMaxRawRef.current;
         gestureMaxRawRef.current = 0;
 
-        const go = top() && maxRaw >= PULL_TO_REFRESH_THRESHOLD_PX;
+        const go = allAtTop() && maxRaw >= PULL_TO_REFRESH_THRESHOLD_PX;
+        gateScroller = null;
 
         if (go) {
           armPullRefreshBeforeReload();

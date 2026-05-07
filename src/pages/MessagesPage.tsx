@@ -126,7 +126,7 @@ export default function MessagesPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4 px-4 pb-28 pt-5">
+    <div className="flex flex-col gap-4 px-3 pb-28 pt-5 sm:px-4">
       <header className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <button type="button" onClick={() => navigate(-1)} className="rounded-lg p-2 hover:bg-slate-800">
