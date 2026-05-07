@@ -42,7 +42,7 @@ async function waitForDeferredInstallPrompt(
   return getDeferred();
 }
 
-/** 집+플러스 아이콘 — 피드 상단에서 홈 화면(PWA) 추가 유도 */
+/** 집+플러스 아이콘 — 피드 상단에서 홈 화면 설치 유도 */
 function HomePlusGlyph({ className }: { className?: string }) {
   return (
     <span
@@ -99,7 +99,7 @@ export default function AddToHomeScreenButton({ className }: { className?: strin
         await navigator.serviceWorker?.ready.catch(() => {});
         ev =
           deferredRef.current ??
-          (await waitForDeferredInstallPrompt(() => deferredRef.current, 5_000, 100));
+          (await waitForDeferredInstallPrompt(() => deferredRef.current, 3_000, 100));
       } finally {
         setInstallBusy(false);
       }
@@ -168,9 +168,10 @@ export default function AddToHomeScreenButton({ className }: { className?: strin
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-3 [-webkit-overflow-scrolling:touch]">
               <div className="space-y-3 text-sm leading-relaxed text-slate-300">
                 <p>
-                  <strong className="text-slate-100">Android·PC (크롬·웨일·삼성 인터넷 등):</strong> PWA 조건이
-                  맞으면 이 버튼으로 브라우저 <strong className="text-slate-100">설치(또는 추가)</strong> 화면이 뜰 수
-                  있어요. 플레이 스토어 앱과는 별개입니다.
+                  <strong className="text-slate-100">Android·PC (크롬·웨일·삼성 인터넷 등):</strong> 브라우저가{" "}
+                  <strong className="text-slate-100">홈 화면에 설치</strong>를 지원하면 이 버튼으로{" "}
+                  <strong className="text-slate-100">설치·추가</strong> 안내 화면이 뜰 수 있어요. 플레이 스토어처럼
+                  앱 마켓에서 받는 것과는 달라요.
                 </p>
                 <p>
                   <strong className="text-slate-100">iPhone·iPad (사파리):</strong> 웹에서 설치 창을 대신 띄울 수
