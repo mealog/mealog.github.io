@@ -1,8 +1,12 @@
 import { toPng } from "html-to-image";
 import { blobToDataUrl } from "./image";
 
-/** 모바일 GPU/canvas 한계 대비 — 초과 시 pixelRatio 를 낮춤 */
+/** 모바일 GPU 한계 — 캡처 단계 픽셀 상한 */
 const MAX_CAPTURE_AREA_PX = 12_000_000;
+/** 공유 PNG 긴 변 상한 — 과대 시 앱에서 줄였을 때 흐려 보이기 쉬움 */
+const MAX_SHARE_LONG_EDGE_PX = 960;
+
+const MAX_WATERMARK_LINES = 10;
 
 async function ensureImagesDecoded(root: HTMLElement): Promise<void> {
   const imgs = [...root.querySelectorAll("img")];
@@ -20,16 +24,12 @@ async function ensureImagesDecoded(root: HTMLElement): Promise<void> {
       try {
         await img.decode();
       } catch {
-        /* 일부 환경에서 decode 미지원·실패 무시 */
+        /* noop */
       }
     }),
   );
 }
 
-/**
- * WebKit(아이폰·갤럭시 브라우저)에서 SVG foreignObject 경로로 넘길 때 `blob:` URL 이
- * 번들되지 않거나 `cacheBust` 쿼리로 깨지는 경우가 많아, 캡처 직전에 data URL 로 바꾼 뒤 되돌린다.
- */
 async function inlineBlobImagesForCapture(root: HTMLElement): Promise<() => void> {
   const imgs = [...root.querySelectorAll("img")];
   const revert: Array<{ img: HTMLImageElement; src: string | null; srcset: string | null }> = [];
@@ -87,7 +87,8 @@ async function inlineBlobImagesForCapture(root: HTMLElement): Promise<() => void
 
 function choosePixelRatio(cssW: number, cssH: number): number {
   const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 2;
-  let pr = Math.min(2, Math.max(1, dpr));
+  const maxCss = Math.max(cssW, cssH, 1);
+  let pr = Math.min(2, Math.max(1, dpr), MAX_SHARE_LONG_EDGE_PX / maxCss);
   const area = cssW * cssH;
   if (area <= 0) return 1;
   while (pr > 1 && area * pr * pr > MAX_CAPTURE_AREA_PX) {
@@ -96,30 +97,132 @@ function choosePixelRatio(cssW: number, cssH: number): number {
   return Math.max(1, Math.round(pr * 4) / 4);
 }
 
-function drawEllipsisText(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  maxWidth: number,
-): void {
-  if (ctx.measureText(text).width <= maxWidth) {
-    ctx.fillText(text, 0, 0);
-    return;
+function greedyWrapLine(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  if (!text) return [""];
+  const lines: string[] = [];
+  let rest = text;
+  while (rest.length > 0) {
+    let lo = 1;
+    let hi = rest.length;
+    let best = 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const slice = rest.slice(0, mid);
+      if (ctx.measureText(slice).width <= maxWidth) {
+        best = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    if (best < 1) best = 1;
+    lines.push(rest.slice(0, best));
+    rest = rest.slice(best);
   }
+  return lines;
+}
+
+function truncateWithEllipsis(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+  if (ctx.measureText(text).width <= maxWidth) return text;
   const ellipsis = "…";
   for (let i = text.length - 1; i > 0; i--) {
     const t = text.slice(0, i) + ellipsis;
-    if (ctx.measureText(t).width <= maxWidth) {
-      ctx.fillText(t, 0, 0);
-      return;
+    if (ctx.measureText(t).width <= maxWidth) return t;
+  }
+  return ellipsis;
+}
+
+function stripUrlSchemeForWatermark(url: string): string {
+  return url.replace(/^https?:\/\//i, "");
+}
+
+function computeWatermarkLayout(
+  canvasWidth: number,
+  cssWidthRef: number,
+  /** 워터마크에만 쓰임 — 스킴(https://) 제외한 호스트·경로 */
+  watermarkHostAndPath: string,
+): {
+  barPx: number;
+  fontPx: number;
+  padX: number;
+  padY: number;
+  lineGap: number;
+  lineHeight: number;
+  lines: string[];
+} {
+  const scaleRef = canvasWidth / Math.max(cssWidthRef, 280);
+  const padX = Math.round(12 * scaleRef);
+  const padY = Math.round(10 * scaleRef);
+  const maxW = Math.max(40, canvasWidth - padX * 2);
+  const lineGap = Math.round(4 * scaleRef);
+
+  const scratch = document.createElement("canvas");
+  scratch.width = Math.max(1, canvasWidth);
+  scratch.height = 10;
+  const ctx = scratch.getContext("2d")!;
+  const fontPxStart = Math.max(10, Math.round(11 * scaleRef));
+  const minFont = Math.max(8, Math.round(8 * scaleRef));
+  const fullSingle = `헬스헬스 — ${watermarkHostAndPath}`;
+
+  let chosenFont = minFont;
+  let lines: string[] = [fullSingle];
+
+  for (let fp = fontPxStart; fp >= minFont; fp--) {
+    ctx.font = `${fp}px ui-sans-serif, system-ui, sans-serif`;
+    let candidate: string[];
+    if (ctx.measureText(fullSingle).width <= maxW) {
+      candidate = [fullSingle];
+    } else if (ctx.measureText("헬스헬스").width <= maxW) {
+      candidate = ["헬스헬스", ...greedyWrapLine(ctx, watermarkHostAndPath, maxW)];
+    } else {
+      candidate = greedyWrapLine(ctx, fullSingle, maxW);
+    }
+
+    if (candidate.length <= MAX_WATERMARK_LINES) {
+      chosenFont = fp;
+      lines = candidate;
+      break;
+    }
+
+    if (fp === minFont) {
+      chosenFont = minFont;
+      ctx.font = `${minFont}px ui-sans-serif, system-ui, sans-serif`;
+      const head = candidate.slice(0, MAX_WATERMARK_LINES - 1);
+      const tailMerged = candidate.slice(MAX_WATERMARK_LINES - 1).join("");
+      head.push(truncateWithEllipsis(ctx, tailMerged, maxW));
+      lines = head;
     }
   }
-  ctx.fillText(ellipsis, 0, 0);
+
+  ctx.font = `${chosenFont}px ui-sans-serif, system-ui, sans-serif`;
+  const lineHeight = Math.ceil(chosenFont * 1.35);
+  const barPx =
+    padY * 2 + lines.length * lineHeight + Math.max(0, lines.length - 1) * lineGap;
+
+  return { barPx, fontPx: chosenFont, padX, padY, lineGap, lineHeight, lines };
+}
+
+function drawWatermarkBar(
+  ctx: CanvasRenderingContext2D,
+  canvasWidth: number,
+  topY: number,
+  layout: ReturnType<typeof computeWatermarkLayout>,
+): void {
+  ctx.fillStyle = "#1e293b";
+  ctx.fillRect(0, topY, canvasWidth, layout.barPx);
+  ctx.fillStyle = "#cbd5e1";
+  ctx.font = `${layout.fontPx}px ui-sans-serif, system-ui, sans-serif`;
+  ctx.textBaseline = "top";
+  let y = topY + layout.padY;
+  for (let i = 0; i < layout.lines.length; i++) {
+    ctx.fillText(layout.lines[i]!, layout.padX, y);
+    y += layout.lineHeight + (i < layout.lines.length - 1 ? layout.lineGap : 0);
+  }
 }
 
 async function captureElementToDataUrl(element: HTMLElement, pixelRatio: number): Promise<string> {
   return toPng(element, {
     pixelRatio,
-    /** blob URL 에 쿼리를 붙이면 일부 모바일 WebKit 에서 깨짐 */
     cacheBust: false,
     backgroundColor: "#0f172a",
     skipFonts: true,
@@ -133,9 +236,35 @@ async function captureElementToDataUrl(element: HTMLElement, pixelRatio: number)
   });
 }
 
-/**
- * 식단 카드 DOM 을 PNG 로 만든 뒤 하단에 앱 URL 워터마크를 붙이고 공유 시트 또는 저장으로 넘긴다.
- */
+function scaleBitmapToMaxEdge(
+  source: CanvasImageSource,
+  sw: number,
+  sh: number,
+): { canvas: HTMLCanvasElement; width: number; height: number } {
+  const m = Math.max(sw, sh);
+  if (m <= MAX_SHARE_LONG_EDGE_PX) {
+    const c = document.createElement("canvas");
+    c.width = sw;
+    c.height = sh;
+    const x = c.getContext("2d");
+    if (!x) throw new Error("canvas 2d 를 사용할 수 없습니다.");
+    x.drawImage(source, 0, 0);
+    return { canvas: c, width: sw, height: sh };
+  }
+  const s = MAX_SHARE_LONG_EDGE_PX / m;
+  const tw = Math.max(1, Math.round(sw * s));
+  const th = Math.max(1, Math.round(sh * s));
+  const c = document.createElement("canvas");
+  c.width = tw;
+  c.height = th;
+  const x = c.getContext("2d");
+  if (!x) throw new Error("canvas 2d 를 사용할 수 없습니다.");
+  x.imageSmoothingEnabled = true;
+  x.imageSmoothingQuality = "high";
+  x.drawImage(source, 0, 0, tw, th);
+  return { canvas: c, width: tw, height: th };
+}
+
 export async function shareMealCardFromElement(
   element: HTMLElement,
   opts: {
@@ -158,7 +287,7 @@ export async function shareMealCardFromElement(
 
     const cssW = Math.max(element.clientWidth, w);
     const cssH = Math.max(element.clientHeight, h);
-    let pr = choosePixelRatio(cssW, cssH);
+    const pr = choosePixelRatio(cssW, cssH);
 
     try {
       dataUrl = await captureElementToDataUrl(element, pr);
@@ -190,35 +319,22 @@ export async function shareMealCardFromElement(
     img.onerror = () => reject(new Error("워터마크 처리 중 이미지를 불러오지 못했습니다."));
   });
 
-  const cssWForScale = Math.max(element.clientWidth, 280);
-  const scale = img.width / cssWForScale;
-  const barCss = 38;
-  const barPx = Math.round(barCss * scale);
+  const cssWRef = Math.max(element.clientWidth, 280);
+  const { canvas: cardCanvas, width: rw, height: rh } = scaleBitmapToMaxEdge(img, img.width, img.height);
+
+  const wmUrlDisplay = stripUrlSchemeForWatermark(opts.promoUrl);
+  const wmLayout = computeWatermarkLayout(rw, cssWRef, wmUrlDisplay);
 
   const canvas = document.createElement("canvas");
-  canvas.width = img.width;
-  canvas.height = img.height + barPx;
+  canvas.width = rw;
+  canvas.height = rh + wmLayout.barPx;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("canvas 2d 를 사용할 수 없습니다.");
 
   ctx.fillStyle = "#0f172a";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(img, 0, 0);
-
-  ctx.fillStyle = "#1e293b";
-  ctx.fillRect(0, img.height, canvas.width, barPx);
-
-  const fontPx = Math.max(11, Math.round(12 * scale));
-  ctx.fillStyle = "#cbd5e1";
-  ctx.font = `${fontPx}px ui-sans-serif, system-ui, sans-serif`;
-  ctx.textBaseline = "middle";
-  const line = `헬스헬스 — ${opts.promoUrl}`;
-  const pad = Math.round(12 * scale);
-  const maxW = canvas.width - pad * 2;
-  ctx.save();
-  ctx.translate(pad, img.height + barPx / 2);
-  drawEllipsisText(ctx, line, maxW);
-  ctx.restore();
+  ctx.drawImage(cardCanvas, 0, 0);
+  drawWatermarkBar(ctx, rw, rh, wmLayout);
 
   const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("PNG 생성 실패"))), "image/png");
@@ -244,12 +360,12 @@ export async function shareMealCardFromElement(
     }
   }
 
-  const url = URL.createObjectURL(blob);
+  const dl = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url;
+  a.href = dl;
   a.download = opts.filename;
   a.click();
-  URL.revokeObjectURL(url);
+  URL.revokeObjectURL(dl);
   alert(
     "이미지를 저장했어요.\n카카오톡·인스타 DM 등에서 사진 첨부로 보내보세요.\n(브라우저에 따라 바로 공유 시트가 안 뜰 수 있어요.)",
   );
