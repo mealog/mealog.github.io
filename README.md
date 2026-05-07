@@ -75,6 +75,23 @@ npm run dev
   - `<USER>.github.io` 저장소 → `/`
 - SPA 라우팅은 `HashRouter` + `404.html` fallback 으로 새로고침해도 안전합니다.
 
+### Firebase — 같은 프로젝트, 새 주소만 허용
+
+호스트만 `mealog.github.io` 로 바꿔도 **Firestore·로그인 데이터는 그대로**입니다. 아래만 **Firebase Console** 에서 한 번씩 해 주세요.
+
+1. [Firebase Console](https://console.firebase.google.com/) → **본인 프로젝트** (기존과 동일) 선택  
+2. **Authentication** → **Settings** 탭 → **Authorized domains**  
+3. **도메인 추가** → `mealog.github.io` 입력 후 저장  
+4. (선택) 예전에 `*.github.io` 만 있었다면 기존 `gogojeje1022.github.io` 는 당분간 두어도 됩니다.
+
+**GitHub Actions 빌드**는 새 저장소(`mealog/mealog.github.io`)에도 예전과 **동일한 이름**의 Secrets 가 필요합니다.
+
+- 저장소 → **Settings** → **Secrets and variables** → **Actions**  
+- 아래 키를 **기존 `healthhealth` 저장소에서 복사**해 동일하게 등록:  
+  `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`
+
+Secrets 없으면 빌드는 되어도 **클라우드 로그인·동기화 UI가 비활성**될 수 있습니다. 등록 후 **Actions** 에서 실패한 워크플로가 있으면 **Re-run** 하세요.
+
 ### 커스텀 도메인 사용시
 
 `public/CNAME` 파일에 도메인을 한 줄로 적고, 워크플로우 환경변수에서 `VITE_BASE_PATH=/` 로 설정하세요.
