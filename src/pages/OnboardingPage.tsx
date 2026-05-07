@@ -29,7 +29,7 @@ export default function OnboardingPage() {
   // 사용자가 입력란을 만지기 시작했는지 — 일단 만지면 자동 prefill 이 더 이상
   // 덮어쓰지 않게 한다(클라우드/구글 값이 늦게 도착해도 사용자 입력 보존).
   const [touchedName, setTouchedName] = useState(false);
-  /** 아바타·체크박스·색을 건드리면 클라우드에서 늦게 온 프로필이 덮어쓰지 않게 */
+  /** 아바타·체크박스를 건드리면 클라우드에서 늦게 온 프로필이 덮어쓰지 않게 */
   const [profileTouched, setProfileTouched] = useState(false);
 
   // 클라우드 동기화나 1인 모드 보정으로 이미 Dexie 에 user 가 들어있으면
@@ -235,24 +235,6 @@ export default function OnboardingPage() {
               </div>
             )}
           </button>
-          <label
-            className="relative flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-slate-700 bg-slate-900/80"
-            title="이니셜·강조 색"
-          >
-            <span
-              className="h-7 w-7 rounded-lg border border-slate-600"
-              style={{ backgroundColor: color }}
-            />
-            <input
-              type="color"
-              value={color}
-              onChange={(e) => {
-                setProfileTouched(true);
-                setColor(e.target.value);
-              }}
-              className="absolute inset-0 cursor-pointer opacity-0"
-            />
-          </label>
           <input
             value={displayName}
             onChange={(e) => {
