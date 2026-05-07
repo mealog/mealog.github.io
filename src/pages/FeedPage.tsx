@@ -204,16 +204,9 @@ function FeedCard({ entry, showSocial, myFirebaseUid, myUserId, myApiKey }: Feed
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   /** 피드에서 사진 재분석 중일 때 버튼 스피너만 씀 (전 카드 분석 중 UI 없음) */
   const [imageReanalyzeBusyId, setImageReanalyzeBusyId] = useState<string | null>(null);
-  const [carouselSlideIdx, setCarouselSlideIdx] = useState(0);
   const [shareBusy, setShareBusy] = useState(false);
   const mealShareRef = useRef<HTMLDivElement | null>(null);
   const editingItem = items.find((it) => it.id === editingItemId) ?? null;
-
-  useEffect(() => {
-    setCarouselSlideIdx((i) =>
-      items.length === 0 ? 0 : Math.min(i, Math.max(0, items.length - 1)),
-    );
-  }, [items.length]);
 
   async function handleShareActiveCard() {
     const el = mealShareRef.current;
@@ -302,85 +295,71 @@ function FeedCard({ entry, showSocial, myFirebaseUid, myUserId, myApiKey }: Feed
 
   return (
     <article className="card overflow-hidden">
-      <header className="flex items-center gap-3 border-b border-slate-800 px-4 py-3">
-        <AuthorAvatar author={author} />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 min-w-0">
-            {!isMine && myFirebaseUid ? (
-              <Link
-                to={`/messages?with=${encodeURIComponent(author.uid)}`}
-                className="truncate text-sm font-semibold text-brand-200 hover:underline"
-                title="DM 보내기"
-              >
-                {author.name}
-              </Link>
-            ) : (
-              <p className="truncate text-sm font-semibold text-slate-100">{author.name}</p>
-            )}
-            {isMine && (
-              <span className="shrink-0 rounded-full bg-brand-500/15 px-1.5 py-0.5 text-[10px] text-brand-200">
-                나
-              </span>
-            )}
+      <div ref={mealShareRef} className="overflow-hidden">
+        <header className="flex items-center gap-3 border-b border-slate-800 px-4 py-3">
+          <AuthorAvatar author={author} />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 min-w-0">
+              {!isMine && myFirebaseUid ? (
+                <Link
+                  to={`/messages?with=${encodeURIComponent(author.uid)}`}
+                  className="truncate text-sm font-semibold text-brand-200 hover:underline"
+                  title="DM 보내기"
+                >
+                  {author.name}
+                </Link>
+              ) : (
+                <p className="truncate text-sm font-semibold text-slate-100">{author.name}</p>
+              )}
+              {isMine && (
+                <span className="shrink-0 rounded-full bg-brand-500/15 px-1.5 py-0.5 text-[10px] text-brand-200">
+                  나
+                </span>
+              )}
+            </div>
+            <p className="mt-0.5 text-[11px] text-slate-400">
+              {MEAL_SLOT_EMOJI[meal.slot]} {MEAL_SLOT_LABELS[meal.slot]} · {formatKoDate(meal.date)}
+            </p>
           </div>
-          <p className="mt-0.5 text-[11px] text-slate-400">
-            {MEAL_SLOT_EMOJI[meal.slot]} {MEAL_SLOT_LABELS[meal.slot]} · {formatKoDate(meal.date)}
-          </p>
-        </div>
-        {isMine ? (
-          <Link
-            to={`/day/${meal.date}?slot=${meal.slot}`}
-            className="rounded-lg bg-slate-800/60 px-2.5 py-1.5 text-[11px] text-slate-300 hover:text-slate-100"
-          >
-            열기
-          </Link>
-        ) : (
-          <Link
-            to={`/friends/${author.uid}/day/${meal.date}?slot=${meal.slot}`}
-            className="rounded-lg bg-slate-800/60 px-2.5 py-1.5 text-[11px] text-slate-300 hover:text-slate-100"
-          >
-            상세
-          </Link>
-        )}
-      </header>
-
-      <div className="space-y-3 p-3">
-        <MealItemCardsCarousel
-          items={items}
-          onActiveSlideChange={setCarouselSlideIdx}
-          renderSlide={(it, idx) => (
-            <MealItemCard
-              item={it}
-              index={idx}
-              readOnly={!isMine}
-              canAnalyze={isMine && !!myApiKey}
-              showPhotoAnalyzingOverlay={false}
-              reanalyzeBusy={imageReanalyzeBusyId === it.id}
-              shareCaptureRef={carouselSlideIdx === idx ? mealShareRef : undefined}
-              onEdit={isMine ? () => setEditingItemId(it.id) : undefined}
-              onReanalyze={
-                isMine && it.photo ? () => void handleReanalyzeByImage(it) : undefined
-              }
-              onRemove={isMine ? () => void handleRemoveItem(it) : undefined}
-            />
-          )}
-        />
-        {items.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+          {items.length > 0 && (
             <button
               type="button"
               disabled={shareBusy}
               onClick={() => void handleShareActiveCard()}
-              className="inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full bg-slate-800/60 px-2 py-0.5 text-slate-200 hover:bg-slate-800/80 disabled:opacity-50"
+              className="exclude-from-share-capture shrink-0 rounded-lg bg-slate-800/60 p-2 text-slate-200 hover:bg-slate-800 hover:text-slate-100 disabled:opacity-50"
               aria-label="카드 이미지로 공유"
               title="카카오톡·인스타 등에 카드 이미지 공유"
             >
               {shareBusy ? (
-                <Loader2 size={12} className="animate-spin shrink-0" aria-hidden />
+                <Loader2 size={18} className="animate-spin shrink-0" aria-hidden />
               ) : (
-                <Share2 size={12} className="shrink-0" aria-hidden />
+                <Share2 size={18} className="shrink-0" aria-hidden />
               )}
             </button>
+          )}
+        </header>
+
+        <div className="space-y-3 p-3">
+          <MealItemCardsCarousel
+            items={items}
+            renderSlide={(it, idx) => (
+              <MealItemCard
+                item={it}
+                index={idx}
+                readOnly={!isMine}
+                canAnalyze={isMine && !!myApiKey}
+                showPhotoAnalyzingOverlay={false}
+                reanalyzeBusy={imageReanalyzeBusyId === it.id}
+                onEdit={isMine ? () => setEditingItemId(it.id) : undefined}
+                onReanalyze={
+                  isMine && it.photo ? () => void handleReanalyzeByImage(it) : undefined
+                }
+                onRemove={isMine ? () => void handleRemoveItem(it) : undefined}
+              />
+            )}
+          />
+        {items.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
             {avgRating !== undefined && (
               <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-amber-300">
                 ★ 평균 {avgRating.toFixed(1)}
@@ -398,8 +377,9 @@ function FeedCard({ entry, showSocial, myFirebaseUid, myUserId, myApiKey }: Feed
             )}
           </div>
         )}
-        {showSocial && <MealSocialBlock ownerUid={author.uid} mealId={meal.id} />}
+        </div>
       </div>
+      {showSocial && <MealSocialBlock ownerUid={author.uid} mealId={meal.id} />}
 
       {isMine && editingItem && myUserId && (
         <MealItemEditDialog

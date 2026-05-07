@@ -1,7 +1,9 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, getSettings, patchSettings, runDexie } from "./lib/db";
+import { requestAutoCloudSync } from "./lib/autoCloudSync";
+import { useAuth } from "./contexts/AuthContext";
 import { applyTheme, normalizeTheme } from "./lib/theme";
 import { FeedStreamProvider } from "./contexts/FeedStreamContext";
 import { usePullToRefresh, PULL_TO_REFRESH_MAX_VISUAL_PX, PULL_TO_REFRESH_THRESHOLD_PX } from "./hooks/usePullToRefresh";
@@ -36,6 +38,9 @@ export default function App() {
   const isSettingsRoute = location.pathname.startsWith("/settings");
   const isInviteRoute = location.pathname.startsWith("/friends/invite");
 
+  const { firebaseReady, user: firebaseUser, loading: authLoading } = useAuth();
+  const [hydrationTimedOut, setHydrationTimedOut] = useState(false);
+
   // settings / userCount 를 분리 쿼리하면 커밋 직후 한 프레임만 어긋나도
   // 온보딩 직후 홈 ↔ 온보딩 리다이렉트가 꼬일 수 있어 한 스냅샷으로 읽는다.
   const gate = useLiveQuery(
@@ -45,6 +50,30 @@ export default function App() {
     }),
     [],
   );
+
+  const needsHydrationWait =
+    gate !== undefined &&
+    firebaseReady &&
+    !authLoading &&
+    !!firebaseUser &&
+    gate.userCount === 0 &&
+    gate.settings.onboarded !== true &&
+    gate.settings.lastCloudSyncAt == null;
+
+  useEffect(() => {
+    if (!needsHydrationWait) {
+      setHydrationTimedOut(false);
+      return;
+    }
+    const t = window.setTimeout(() => setHydrationTimedOut(true), 14_000);
+    return () => window.clearTimeout(t);
+  }, [needsHydrationWait]);
+
+  useEffect(() => {
+    if (needsHydrationWait && firebaseUser) {
+      requestAutoCloudSync({ immediate: true });
+    }
+  }, [needsHydrationWait, firebaseUser?.uid]);
 
   /**
    * 풀투새프레시: `<main>` 이 DOM 에 붙었을 때만 리스너를 붙인다.
@@ -102,8 +131,27 @@ export default function App() {
     );
   }
 
+  if (firebaseReady && authLoading) {
+    return (
+      <div className="app-shell flex h-full items-center justify-center text-slate-500">
+        로그인 확인 중…
+      </div>
+    );
+  }
+
   const { settings, userCount } = gate;
   const needsOnboarding = shouldRedirectToOnboarding(settings, userCount);
+
+  if (needsHydrationWait && !hydrationTimedOut) {
+    return (
+      <div className="app-shell flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-slate-500">
+        <p className="text-sm text-slate-300">계정 데이터를 불러오는 중…</p>
+        <p className="text-xs text-slate-500">
+          같은 계정으로 다른 주소에서 쓰던 기록은 잠시 후 여기로 맞춰져요.
+        </p>
+      </div>
+    );
+  }
 
   // 온보딩 페이지에서 사용자가 닉네임·아바타를 다듬고 있는 동안에는 클라우드
   // 동기화로 user/onboarded 가 채워져도 자동으로 메인으로 이탈하지 않는다.

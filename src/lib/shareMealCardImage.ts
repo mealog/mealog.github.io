@@ -230,6 +230,7 @@ async function captureElementToDataUrl(element: HTMLElement, pixelRatio: number)
     skipFonts: false,
     filter: (node) => {
       if (!(node instanceof HTMLElement)) return true;
+      if (node.closest(".exclude-from-share-capture")) return false;
       const cls = typeof node.className === "string" ? node.className : "";
       if (cls.includes("backdrop-blur")) return false;
       if (cls.includes("backdrop-saturate")) return false;
