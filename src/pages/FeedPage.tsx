@@ -23,8 +23,11 @@ import { MEAL_SLOT_EMOJI, MEAL_SLOT_LABELS, type MealItem } from "../types";
 
 /**
  * 피드 탭 — 스트림은 App 의 FeedStreamProvider 에서 구독하고, 여기서는 렌더링만 합니다.
+ * 친구별 식단 스트림은 Context 쪽 구독과 별개로, 카드가 화면에 있을 때만 좋아요·댓글 리스너가 붙으므로
+ * 첫 번째 묶음을 작게 두면 초기 Firestore 사용을 줄일 수 있습니다.
  */
-const FEED_PAGE_SIZE = 8;
+const FEED_INITIAL_VISIBLE = 5;
+const FEED_LOAD_MORE_COUNT = 5;
 
 export default function FeedPage() {
   const { user, firebaseReady, loading: authLoading } = useAuth();
@@ -47,11 +50,11 @@ export default function FeedPage() {
     return set.size > 0;
   }, [entries]);
 
-  const [visibleCount, setVisibleCount] = useState(FEED_PAGE_SIZE);
+  const [visibleCount, setVisibleCount] = useState(FEED_INITIAL_VISIBLE);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    setVisibleCount((n) => Math.min(Math.max(n, FEED_PAGE_SIZE), entries.length));
+    setVisibleCount((n) => Math.min(Math.max(n, FEED_INITIAL_VISIBLE), entries.length));
   }, [entries.length]);
 
   const visibleEntries =
@@ -65,7 +68,7 @@ export default function FeedPage() {
       (records) => {
         if (records.some((r) => r.isIntersecting)) {
           setVisibleCount((prev) =>
-            prev >= entries.length ? prev : Math.min(prev + FEED_PAGE_SIZE, entries.length),
+            prev >= entries.length ? prev : Math.min(prev + FEED_LOAD_MORE_COUNT, entries.length),
           );
         }
       },
