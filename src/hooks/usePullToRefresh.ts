@@ -5,20 +5,19 @@ import {
 } from "../lib/pullRefreshSplash";
 
 /** 손가락 이동(px)으로 새로고침 여부 판단 — 시각적 당김은 damp 적용 */
-export const PULL_TO_REFRESH_THRESHOLD_PX = 52;
+export const PULL_TO_REFRESH_THRESHOLD_PX = 72;
 /** 당긴 거리 → 화면에 반영되는 최대 오프셋(px) */
-export const PULL_TO_REFRESH_MAX_VISUAL_PX = 72;
+export const PULL_TO_REFRESH_MAX_VISUAL_PX = 78;
 /** 손가락 거리에 곱해 고무줄 느낌 */
-const PULL_DAMPING = 0.42;
+const PULL_DAMPING = 0.38;
 
-/** 맨 위 판정 — 살짝 밀린 scrollTop 에서도 PTR 이 붙도록 여유 */
-const SCROLL_TOP_EPS = 48;
-
-/** 이 거리 이상 당기면 “커밋”: 이후에는 scrollTop 요동으로 제스처를 끊지 않음 */
-const PULL_COMMIT_RAW_PX = 12;
-
-function isMainAtScrollTop(mainEl: HTMLElement): boolean {
-  return mainEl.scrollTop <= SCROLL_TOP_EPS;
+/** 터치 없는 순수 데스크톱에서는 리스너 생략 — gogojeje1022.github.io/healthhealth 동작과 동일 */
+function isTouchEnvironment(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    "ontouchstart" in window ||
+    (typeof navigator !== "undefined" && (navigator.maxTouchPoints ?? 0) > 0)
+  );
 }
 
 function dampVisual(rawPull: number): number {
@@ -34,10 +33,10 @@ export type PullToRefreshGesture = {
 };
 
 /**
- * `<main>` 맨 위에서 아래로 당겼다 떼면 `location.reload()`.
+ * 스크롤 최상단에서 아래로 당겼다 떼면 `location.reload()`.
  *
- * iOS 등에서 아래로 당기기 시작할 때 잠깐 scrollTop 이 튀면 기존 로직이 즉시 제스처를 끊었고,
- * 오늘 바뀐 `overscroll-behavior` 도 브라우저별로 PTR 과 상성이 달라 문제를 키울 수 있다.
+ * 리스너는 스크롤 컨테이너(`<main>`) 자체에만 붙인다(window 캡처 X).
+ * 예전 healthhealth 배포에서 PTR 가 안정적으로 되던 방식과 동일하다.
  */
 export function usePullToRefresh(
   scrollEl: RefObject<HTMLElement | null>,
@@ -52,7 +51,7 @@ export function usePullToRefresh(
   const settleRafRef = useRef(0);
 
   useLayoutEffect(() => {
-    if (!enabled) {
+    if (!enabled || !isTouchEnvironment()) {
       gestureMaxRawRef.current = 0;
       cancelAnimationFrame(settleRafRef.current);
       settleRafRef.current = 0;
@@ -64,21 +63,16 @@ export function usePullToRefresh(
     }
 
     let touchActive = false;
-    let startedAtTop = false;
-    let pullCommitted = false;
     let startY = 0;
 
-    const capPassive: AddEventListenerOptions = { capture: true, passive: true };
-    const capBlocking: AddEventListenerOptions = { capture: true, passive: false };
+    const passiveOpt: AddEventListenerOptions = { passive: true };
+    const blockingOpt: AddEventListenerOptions = { passive: false };
 
     const setup = (): (() => void) | undefined => {
-      const mainEl = scrollEl.current;
-      if (!mainEl) return undefined;
+      const el = scrollEl.current;
+      if (!el) return undefined;
 
-      const targetInsideMain = (t: EventTarget | null) =>
-        t instanceof Node && mainEl.contains(t);
-
-      const top = () => isMainAtScrollTop(mainEl);
+      const top = () => el.scrollTop <= 2;
 
       const settleToZero = () => {
         cancelAnimationFrame(settleRafRef.current);
@@ -94,10 +88,7 @@ export function usePullToRefresh(
 
       const onTouchStart: EventListener = (e) => {
         const te = e as TouchEvent;
-        if (!targetInsideMain(te.target)) return;
-        startedAtTop = top();
-        pullCommitted = false;
-        if (!startedAtTop) return;
+        if (!top()) return;
         cancelAnimationFrame(settleRafRef.current);
         settleRafRef.current = 0;
         touchActive = true;
@@ -109,24 +100,18 @@ export function usePullToRefresh(
 
       const onTouchMove: EventListener = (e) => {
         const te = e as TouchEvent;
-        if (!touchActive || !startedAtTop) return;
-
-        const raw = te.touches[0].clientY - startY;
-        if (raw <= 2) return;
-
-        /** 고무줄이 한 프레임이라도 scrollTop 을 밀면 그 다음 줄에서 PTR 이 끊기므로, 맨 위에서 아래로 당길 때는 먼저 막는다 */
-        if (te.cancelable && raw > 4) {
-          te.preventDefault();
+        if (!touchActive) return;
+        if (!top()) {
+          touchActive = false;
+          gestureMaxRawRef.current = 0;
+          settleToZero();
+          return;
         }
+        const raw = te.touches[0].clientY - startY;
+        if (raw <= 4) return;
 
-        if (!pullCommitted) {
-          if (!top()) {
-            touchActive = false;
-            gestureMaxRawRef.current = 0;
-            settleToZero();
-            return;
-          }
-          if (raw >= PULL_COMMIT_RAW_PX) pullCommitted = true;
+        if (te.cancelable && raw >= 18) {
+          te.preventDefault();
         }
 
         gestureMaxRawRef.current = Math.max(gestureMaxRawRef.current, raw);
@@ -139,10 +124,8 @@ export function usePullToRefresh(
         touchActive = false;
         const maxRaw = gestureMaxRawRef.current;
         gestureMaxRawRef.current = 0;
-        pullCommitted = false;
 
-        /** 떼는 순간 scrollTop 이 살짝 어긋나 새로고침이 씹히지 않게, 시작이 맨 위였고 당김만 본다 */
-        const go = startedAtTop && maxRaw >= PULL_TO_REFRESH_THRESHOLD_PX;
+        const go = top() && maxRaw >= PULL_TO_REFRESH_THRESHOLD_PX;
 
         if (go) {
           armPullRefreshBeforeReload();
@@ -157,18 +140,18 @@ export function usePullToRefresh(
         settleToZero();
       };
 
-      window.addEventListener("touchstart", onTouchStart, capPassive);
-      window.addEventListener("touchmove", onTouchMove, capBlocking);
-      window.addEventListener("touchend", onTouchEnd, capPassive);
-      window.addEventListener("touchcancel", onTouchEnd, capPassive);
+      el.addEventListener("touchstart", onTouchStart, passiveOpt);
+      el.addEventListener("touchmove", onTouchMove, blockingOpt);
+      el.addEventListener("touchend", onTouchEnd, passiveOpt);
+      el.addEventListener("touchcancel", onTouchEnd, passiveOpt);
 
       return () => {
         cancelAnimationFrame(settleRafRef.current);
         settleRafRef.current = 0;
-        window.removeEventListener("touchstart", onTouchStart, capPassive);
-        window.removeEventListener("touchmove", onTouchMove, capBlocking);
-        window.removeEventListener("touchend", onTouchEnd, capPassive);
-        window.removeEventListener("touchcancel", onTouchEnd, capPassive);
+        el.removeEventListener("touchstart", onTouchStart, passiveOpt);
+        el.removeEventListener("touchmove", onTouchMove, blockingOpt);
+        el.removeEventListener("touchend", onTouchEnd, passiveOpt);
+        el.removeEventListener("touchcancel", onTouchEnd, passiveOpt);
       };
     };
 
