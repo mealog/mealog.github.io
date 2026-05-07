@@ -630,9 +630,19 @@ export async function acceptFriendInviteCode(
 
   const fs = getFirestoreDb();
   const inviteRef = doc(fs, "friendInviteCodes", codeId);
-  let outSid = "";
 
-  await runTransaction(fs, async (transaction) => {
+  type ReverseSharePayload = {
+    sid: string;
+    clean: Record<string, unknown>;
+    expectOwner: string;
+    expectViewer: string;
+  };
+
+  /** 맞팔 역방향 share 는 트랜잭션 밖에서 씀 — 규칙의 exists(forwardShare) 가 동일 트랜잭션의 set 을 보면 못 해 권한 오류가 남 */
+  const { outSid, reverseAfterTx } = await runTransaction(fs, async (transaction) => {
+    let pendingReverse: ReverseSharePayload | null = null;
+    let outSidInner = "";
+
     const inviteSnap = await transaction.get(inviteRef);
     if (!inviteSnap.exists()) throw new Error("초대 링크를 찾을 수 없어요.");
     const inv = { ...(inviteSnap.data() as Omit<FriendInviteCode, "id">), id: inviteSnap.id };
@@ -641,8 +651,8 @@ export async function acceptFriendInviteCode(
     if (Date.now() > inv.expiresAt) throw new Error("초대 링크가 만료됐어요.");
     if (inv.fromUid === me.uid) throw new Error("본인이 만든 초대는 수락할 수 없어요.");
 
-    outSid = shareIdFor(me.uid, inv.fromUid);
-    const shareRef = doc(fs, "shares", outSid);
+    outSidInner = shareIdFor(me.uid, inv.fromUid);
+    const shareRef = doc(fs, "shares", outSidInner);
     const shareSnap = await transaction.get(shareRef);
     const revSid = shareIdFor(inv.fromUid, me.uid);
     const revShareRef = doc(fs, "shares", revSid);
@@ -653,7 +663,7 @@ export async function acceptFriendInviteCode(
 
     if (!shareSnap.exists()) {
       const share: Share = {
-        id: outSid,
+        id: outSidInner,
         ownerUid: me.uid,
         viewerUid: inv.fromUid,
         scope: finalScope,
@@ -688,7 +698,7 @@ export async function acceptFriendInviteCode(
       transaction.update(shareRef, patch);
     }
 
-    /** 맞팔 — 발급자(owner) → 수락자(viewer) 역방향 share (수락자만 viewer 이므로 규칙상 역방향 create 예외 사용) */
+    /** 맞팔 역방향 — transaction.set 하지 않음 (보안 규칙 mutualReverseShareCreateOk 의 exists 가 같은 배치를 못 봄) */
     if (!revSnap.exists()) {
       const revShare: Share = {
         id: revSid,
@@ -707,7 +717,12 @@ export async function acceptFriendInviteCode(
       const cleanRev: Record<string, unknown> = { ...revShare };
       if (cleanRev.ownerPhotoURL === undefined) delete cleanRev.ownerPhotoURL;
       if (cleanRev.viewerPhotoURL === undefined) delete cleanRev.viewerPhotoURL;
-      transaction.set(revShareRef, cleanRev);
+      pendingReverse = {
+        sid: revSid,
+        clean: cleanRev,
+        expectOwner: inv.fromUid,
+        expectViewer: me.uid,
+      };
     } else {
       const rex = revSnap.data() as Share;
       if (rex.ownerUid !== inv.fromUid || rex.viewerUid !== me.uid) {
@@ -722,7 +737,26 @@ export async function acceptFriendInviteCode(
       usedByEmail: myEmail,
       usedAt: now,
     });
+
+    return { outSid: outSidInner, reverseAfterTx: pendingReverse };
   });
+
+  if (reverseAfterTx) {
+    const revRef = doc(fs, "shares", reverseAfterTx.sid);
+    const postRev = await getDoc(revRef);
+    if (!postRev.exists()) {
+      await withFirestoreDeadline(
+        setDoc(revRef, reverseAfterTx.clean),
+        45_000,
+        "연결 시간이 초과됐어요. 네트워크를 확인하고 다시 시도해 주세요.",
+      );
+    } else {
+      const rex = postRev.data() as Share;
+      if (rex.ownerUid !== reverseAfterTx.expectOwner || rex.viewerUid !== reverseAfterTx.expectViewer) {
+        throw new Error("이 초대와 맞지 않는 공유 설정이 이미 있어요.");
+      }
+    }
+  }
 
   const s = await getDoc(doc(fs, "shares", outSid));
   if (!s.exists()) throw new Error("공유 문서를 만들지 못했어요.");

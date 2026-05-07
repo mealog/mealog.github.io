@@ -335,7 +335,8 @@ service cloud.firestore {
     // 없는 문서를 트랜잭션으로 get 할 때는 resource.data 가 비어 규칙만으로 거절되는 문제가 있어 존재 시에만 소유자/viewer 검사.
     //
     // 링크 초대 수락 시 "맞팔" — 역방향 문서(id: owner_viewer) 는 원래 owner 만 create 가능하므로,
-    // 이미 존재하는 반대 방향 share(수락자→발급자) 가 같은 트랜잭션에 있으면 수락자가 viewer 인 역방향 문서를 create 할 수 있게 예외를 둔다.
+    // 이미 존재하는 순방향 share(수락자→발급자) 가 있으면 수락자가 viewer 인 역방향 문서를 create 할 수 있게 예외를 둔다.
+    // 주의: 동일 트랜잭션/배치에서 막 만든 순방향 문서는 exists()/get() 에 안 보이므로, 클라이언트는 역방향 쓰기를 커밋 이후에 수행한다.
     function mutualReverseShareCreateOk(shareSid) {
       let o = request.resource.data.ownerUid;
       let v = request.resource.data.viewerUid;
