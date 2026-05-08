@@ -31,6 +31,7 @@ import { wipeMyCloudData } from "../lib/wipeCloud";
 import { isEmbeddedBrowserLikelyBlockingGoogleOAuth } from "../lib/inAppBrowser";
 import EmbeddedGoogleLoginNotice from "../components/EmbeddedGoogleLoginNotice";
 import ProfileIdentitySection from "../components/ProfileIdentitySection";
+import GeminiApiKeyGuide from "../components/GeminiApiKeyGuide";
 
 export default function SettingsPage() {
   const {
@@ -246,8 +247,16 @@ export default function SettingsPage() {
           >
             AI Studio
           </a>
-          에서 발급 · 로그인한 Google 계정에 맞춰 동기화됩니다. 모델은 자동으로 최적의 Gemini 모델을 사용해요.
+          에서 키를 발급해 넣으면 됩니다. 기본은{" "}
+          <span className="font-medium text-slate-300">무료 등급</span>이라 따로 결제 연결 없이도 무료
+          한도 안에서 AI 분석을 쓸 수 있어요 — 보통 보이는 그 키를 그대로 복사해 쓰시면 됩니다. 로그인한
+          Google 계정에 맞춰 동기화되고, 모델은 자동으로 맞는 Gemini 모델을 씁니다. 일일·분당 한도 등은{" "}
+          <span className="text-slate-500">Google 정책을 따릅니다.</span>
         </p>
+
+        <div className="mb-3">
+          <GeminiApiKeyGuide />
+        </div>
 
         <div className="space-y-2">
           <div className="relative">

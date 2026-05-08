@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import AvatarBubble from "../components/AvatarBubble";
 import AvatarPicker, { type AvatarPick } from "../components/AvatarPicker";
+import GeminiApiKeyGuide from "../components/GeminiApiKeyGuide";
 import FirebaseLoginCard from "../components/FirebaseLoginCard";
 import {
   db,
@@ -301,8 +302,15 @@ export default function OnboardingPage() {
           <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-brand-400 underline">
             AI Studio
           </a>
-          에서 발급 · 나중에 설정에서도 가능
+          에서 키를 발급해 넣을 수 있어요. 기본은{" "}
+          <span className="font-medium text-slate-300">무료 등급</span>이라 결제 연결 없이도 무료 한도 안에서
+          AI 분석을 쓸 수 있어요 — 보통 보이는 키를 그대로 복사해 쓰시면 됩니다. 나중에{" "}
+          <span className="text-slate-400">설정</span>에서도 바꿀 수 있고, 일일·분당 한도는{" "}
+          <span className="text-slate-500">Google 정책을 따릅니다.</span>
         </p>
+        <div className="mb-3">
+          <GeminiApiKeyGuide compact />
+        </div>
         <input
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
