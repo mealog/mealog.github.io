@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
+import { Loader2 } from "lucide-react";
 import AvatarBubble from "../components/AvatarBubble";
 import AvatarPicker, { type AvatarPick } from "../components/AvatarPicker";
 import GeminiApiKeyGuide from "../components/GeminiApiKeyGuide";
+import GeminiKeyClipboardAssist from "../components/GeminiKeyClipboardAssist";
 import FirebaseLoginCard from "../components/FirebaseLoginCard";
 import {
   db,
@@ -11,18 +13,26 @@ import {
   getSettings,
   migrateLocalProfileAndRecordsToUserId,
   runDexie,
-  uid,
 } from "../lib/db";
 import { nextColor } from "../lib/utils";
 import { userFacingStorageErrorMessage } from "../lib/idbRetry";
 import { useAuth } from "../contexts/AuthContext";
+import { requestAutoCloudSync } from "../lib/autoCloudSync";
 import type { User } from "../types";
 
 export default function OnboardingPage() {
-  const { user: authUser } = useAuth();
+  const {
+    user: authUser,
+    firebaseReady,
+    loading: authLoading,
+  } = useAuth();
+
+  const cloudSettings = useLiveQuery(() => getSettings(), []);
   const [displayName, setDisplayName] = useState("");
   const [color, setColor] = useState(() => nextColor([]));
   const [apiKey, setApiKey] = useState("");
+  /** 입력란을 직접 건드리기 전에는 클라우드 동기화로 들어온 키를 반영 */
+  const [apiKeyTouched, setApiKeyTouched] = useState(false);
   const [useGoogleAvatar, setUseGoogleAvatar] = useState(true);
   const [avatarKind, setAvatarKind] = useState<"upload" | "preset" | undefined>(undefined);
   const [avatarDataUrl, setAvatarDataUrl] = useState<string | undefined>(undefined);
@@ -85,6 +95,27 @@ export default function OnboardingPage() {
     authUser?.displayName,
   ]);
 
+  useEffect(() => {
+    if (apiKeyTouched) return;
+    const k = cloudSettings?.geminiApiKey?.trim();
+    if (k) setApiKey(k);
+  }, [cloudSettings?.geminiApiKey, apiKeyTouched]);
+
+  /** 온보딩 중 로그인 직후 비공개 설정(키)을 최대한 빨리 끌어옴 */
+  useEffect(() => {
+    if (!firebaseReady || !authUser) return;
+    requestAutoCloudSync({ immediate: true });
+  }, [firebaseReady, authUser?.uid]);
+
+  const canContinueProfile = firebaseReady && !!authUser;
+  const stepBlockedReason = !firebaseReady
+    ? "firebase"
+    : authLoading
+      ? "loading"
+      : !authUser
+        ? "login"
+        : null;
+
   function computeAvatarFields(): Pick<User, "avatarKind" | "avatarDataUrl"> {
     const googleAvatarAvailable = !!authUser?.photoURL;
     if (googleAvatarAvailable && useGoogleAvatar) {
@@ -97,6 +128,10 @@ export default function OnboardingPage() {
   }
 
   async function finish() {
+    if (!firebaseReady || !authUser?.uid) {
+      alert("먼저 Google로 로그인해 주세요.");
+      return;
+    }
     const name = displayName.trim();
     if (!name) {
       alert("이름을 입력해 주세요.");
@@ -111,11 +146,8 @@ export default function OnboardingPage() {
       const baseUser = baseUserId
         ? await runDexie(() => db.users.get(baseUserId))
         : undefined;
-      /** Google 로그인된 채 프로필을 만들면 Firestore 동기화·식단 소유와 항상 맞도록 Firebase UID 로 고정한다. */
-      const profileId =
-        authUser?.uid ??
-        baseUser?.id ??
-        uid();
+      /** 온보딩은 Google 로그인 필수 — 프로필 id 는 항상 Firebase UID */
+      const profileId = authUser.uid;
 
       if (baseUser) {
         if (profileId !== baseUser.id) {
@@ -206,20 +238,50 @@ export default function OnboardingPage() {
           프로필을 만들고 식단·건강 기록을 사진으로 남기면 AI가 분석합니다.
         </p>
         <p className="mt-2 text-xs text-slate-500">
-          기존 클라우드 데이터는 아래 <strong className="text-slate-400">Google 로그인</strong> 후 이어집니다. 계정 바꾸기는{" "}
+          <strong className="text-slate-400">1단계</strong>에서 Google로 로그인한 뒤{" "}
+          <strong className="text-slate-400">2단계</strong>에서 닉네임을 정할 수 있어요. 계정 전환은{" "}
           <Link to="/settings" className="text-brand-400 underline">
             설정
           </Link>
-          .
+          에서 할 수 있어요.
         </p>
       </header>
 
-      <div className="mb-6">
-        <FirebaseLoginCard />
-      </div>
+      <section className="mb-4">
+        <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-300">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-500/25 text-xs font-bold text-brand-200">
+            1
+          </span>
+          Google로 로그인 <span className="text-rose-400/90">(필수)</span>
+        </h2>
+        {authLoading && firebaseReady ? (
+          <div className="card flex items-center justify-center gap-2 py-8 text-sm text-slate-400">
+            <Loader2 size={18} className="animate-spin text-brand-400" />
+            로그인 상태 확인 중…
+          </div>
+        ) : (
+          <FirebaseLoginCard />
+        )}
+        {stepBlockedReason === "login" && !authLoading ? (
+          <p className="mt-2 text-xs text-slate-500">
+            위에서 로그인을 마치면 다음 단계(닉네임·프로필)가 열려요.
+          </p>
+        ) : null}
+      </section>
 
-      <section className="mb-6">
-        <h2 className="mb-3 text-sm font-semibold text-slate-300">프로필</h2>
+      <section
+        className={`mb-6 transition-opacity ${canContinueProfile ? "opacity-100" : "pointer-events-none opacity-40"}`}
+        aria-hidden={!canContinueProfile}
+      >
+        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-300">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-700 text-xs font-bold text-slate-200">
+            2
+          </span>
+          프로필
+        </h2>
+        {!canContinueProfile && firebaseReady && !authLoading ? (
+          <p className="mb-3 text-xs text-amber-200/90">Google 로그인 후 이용할 수 있어요.</p>
+        ) : null}
         <div className="flex items-center gap-2 rounded-2xl border border-slate-800 bg-slate-900/60 p-2">
           <button
             type="button"
@@ -284,7 +346,7 @@ export default function OnboardingPage() {
         </p>
       </section>
 
-      {pickerOpen && (
+      {pickerOpen && canContinueProfile && (
         <AvatarPicker
           authUser={authUser ?? null}
           currentKind={
@@ -303,39 +365,48 @@ export default function OnboardingPage() {
         />
       )}
 
-      <section className="mb-8">
+      <section
+        className={`mb-8 transition-opacity ${canContinueProfile ? "opacity-100" : "pointer-events-none opacity-40"}`}
+        aria-hidden={!canContinueProfile}
+      >
         <h2 className="mb-2 text-sm font-semibold text-slate-300">
           Google Gemini 키 <span className="text-slate-500">(선택)</span>
         </h2>
-        <p className="mb-3 text-xs text-slate-500">
-          <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-brand-400 underline">
-            AI Studio
-          </a>
-          에서 키를 발급해 넣을 수 있어요. 기본은{" "}
-          <span className="font-medium text-slate-300">무료 등급</span>이라 결제 연결 없이도 무료 한도 안에서
-          AI 분석을 쓸 수 있어요 — 보통 보이는 키를 그대로 복사해 쓰시면 됩니다. 나중에{" "}
-          <span className="text-slate-400">설정</span>에서도 바꿀 수 있고, 일일·분당 한도는{" "}
-          <span className="text-slate-500">Google 정책을 따릅니다.</span>
+        <p className="mb-2 text-[11px] text-slate-500">
+          AI 분석용(선택). 예전에 이 계정으로 저장한 키가 있으면 동기화돼 채워질 수 있어요.
         </p>
-        <div className="mb-3">
+        <div className="mb-2">
           <GeminiApiKeyGuide compact />
+        </div>
+        <div className="mb-2">
+          <GeminiKeyClipboardAssist
+            disabled={!canContinueProfile}
+            onFilled={(k) => {
+              setApiKeyTouched(true);
+              setApiKey(k);
+            }}
+          />
         </div>
         <input
           value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
+          onChange={(e) => {
+            setApiKeyTouched(true);
+            setApiKey(e.target.value);
+          }}
           placeholder="AIzaSy..."
           className="input"
           autoComplete="off"
+          disabled={!canContinueProfile}
         />
       </section>
 
       <button
         type="button"
         onClick={() => void finish()}
-        disabled={busy}
-        className="btn-primary mt-auto w-full py-4 text-base"
+        disabled={busy || !canContinueProfile}
+        className="btn-primary mt-auto w-full py-4 text-base disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {busy ? "준비 중…" : "시작하기"}
+        {busy ? "준비 중…" : canContinueProfile ? "시작하기" : "먼저 Google로 로그인"}
       </button>
     </div>
   );

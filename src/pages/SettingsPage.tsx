@@ -32,6 +32,7 @@ import { isEmbeddedBrowserLikelyBlockingGoogleOAuth } from "../lib/inAppBrowser"
 import EmbeddedGoogleLoginNotice from "../components/EmbeddedGoogleLoginNotice";
 import ProfileIdentitySection from "../components/ProfileIdentitySection";
 import GeminiApiKeyGuide from "../components/GeminiApiKeyGuide";
+import GeminiKeyClipboardAssist from "../components/GeminiKeyClipboardAssist";
 
 export default function SettingsPage() {
   const {
@@ -238,26 +239,30 @@ export default function SettingsPage() {
         <h2 className="mb-1 flex items-center gap-2 text-base font-semibold">
           <KeyRound size={16} className="text-brand-400" /> Google Gemini 키
         </h2>
-        <p className="mb-3 text-xs text-slate-400">
+        <p className="mb-2 text-xs leading-snug text-slate-400">
+          식단·건강 AI 분석에는{" "}
           <a
-            href="https://aistudio.google.com/apikey"
+            href="https://aistudio.google.com/app/apikey"
             target="_blank"
             rel="noreferrer"
             className="text-brand-400 underline"
           >
-            AI Studio
+            AI Studio API 키
           </a>
-          에서 키를 발급해 넣으면 됩니다. 기본은{" "}
-          <span className="font-medium text-slate-300">무료 등급</span>이라 따로 결제 연결 없이도 무료
-          한도 안에서 AI 분석을 쓸 수 있어요 — 보통 보이는 그 키를 그대로 복사해 쓰시면 됩니다. 로그인한
-          Google 계정에 맞춰 동기화되고, 모델은 자동으로 맞는 Gemini 모델을 씁니다. 일일·분당 한도 등은{" "}
-          <span className="text-slate-500">Google 정책을 따릅니다.</span>
+          가 필요합니다. 로그인과 별개로 스튜디오에서 발급·복사합니다. 저장하면 같은 Google 계정으로 동기화돼요.
         </p>
 
-        <div className="mb-3">
+        <div className="mb-2">
           <GeminiApiKeyGuide />
         </div>
 
+        <div className="mb-2">
+          <GeminiKeyClipboardAssist
+            onFilled={(k) => {
+              setApiKey(k);
+            }}
+          />
+        </div>
         <div className="space-y-2">
           <div className="relative">
             <input
