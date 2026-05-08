@@ -91,6 +91,7 @@ export function MealItemCard({
           >
             <Loader2 className="h-8 w-8 shrink-0 animate-spin text-brand-400" aria-hidden />
             <span className="px-2 text-center text-[11px] font-medium text-slate-100">AI 분석 중…</span>
+            <AnalyzingDelayHint active readOnly={readOnly} />
           </div>
         )}
         <span className="absolute left-2 top-2 rounded-full bg-slate-950/70 px-2 py-0.5 text-[10px] font-semibold text-slate-200 backdrop-blur">
@@ -320,6 +321,25 @@ function NutritionMacroBars({ nutrition }: { nutrition: NonNullable<MealItem["nu
   );
 }
 
+/** AI 호출이 길어질 때(네트워크 등) 사용자에게 재시도 가능함을 알림 */
+function AnalyzingDelayHint({ active, readOnly }: { active: boolean; readOnly: boolean }) {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    if (!active || readOnly) {
+      setShow(false);
+      return;
+    }
+    const t = window.setTimeout(() => setShow(true), 45_000);
+    return () => clearTimeout(t);
+  }, [active, readOnly]);
+  if (!show) return null;
+  return (
+    <p className="max-w-[16rem] text-center text-[10px] leading-snug text-slate-200/90">
+      너무 오래 걸리면 자동으로 안내가 뜨니, 그때 「다시 시도」를 눌러 주세요.
+    </p>
+  );
+}
+
 export function ItemAnalysisBlock({
   item,
   readOnly = false,
@@ -427,11 +447,16 @@ export function ItemAnalysisBlock({
 
   if (item.analysisStatus === "analyzing") {
     return (
-      <div className="flex items-center gap-2 rounded-xl bg-slate-800/50 px-3 py-2.5 text-sm text-slate-300">
-        <Loader2 size={16} className="animate-spin text-brand-400" />
-        {readOnly
-          ? "친구가 분석을 마치면 결과가 곧 여기에도 나타나요. 잠시 후 새로고침해 보세요."
-          : "AI가 식단을 분석하고 있어요…"}
+      <div className="flex flex-col gap-1 rounded-xl bg-slate-800/50 px-3 py-2.5 text-sm text-slate-300">
+        <div className="flex items-center gap-2">
+          <Loader2 size={16} className="animate-spin text-brand-400" />
+          <span>
+            {readOnly
+              ? "친구가 분석을 마치면 결과가 곧 여기에도 나타나요. 잠시 후 새로고침해 보세요."
+              : "AI가 식단을 분석하고 있어요…"}
+          </span>
+        </div>
+        {!readOnly && <AnalyzingDelayHint active readOnly={readOnly} />}
       </div>
     );
   }

@@ -31,6 +31,41 @@ function clearInput(el: HTMLInputElement | null) {
   if (el) el.value = "";
 }
 
+/**
+ * 삼성 인터넷 등에서 카메라 촬영 직후 `File.size === 0` 인 채로 넘어오는 경우가 있음.
+ * 짧게 기다리거나 `arrayBuffer()` 로 읽으면 실제 픽셀 데이터가 들어 있는 경우가 있다.
+ */
+async function coerceFileToReadableImage(file: File): Promise<File | null> {
+  if (file.size > 0) return file;
+
+  for (const ms of [0, 40, 120, 280]) {
+    if (ms > 0) {
+      await new Promise<void>((r) => setTimeout(r, ms));
+    }
+    if (file.size > 0) return file;
+  }
+
+  try {
+    const buf = await file.arrayBuffer();
+    if (buf.byteLength > 0) {
+      return new File([buf], file.name || "photo.jpg", {
+        type: file.type && file.type.length > 0 ? file.type : "image/jpeg",
+      });
+    }
+  } catch (e) {
+    console.warn("[PhotoUpload] 빈 파일 arrayBuffer 시도 실패", e);
+  }
+  return null;
+}
+
+function emptyPhotoMessage(): string {
+  const samsung = shouldOmitCaptureOnFileInputs();
+  const tail = samsung
+    ? "삼성 인터넷 등에서는 가끔 카메라 직후 파일이 비어 보일 수 있어요.\n\n• 오른쪽 앨범 버튼에서 방금 찍은 사진을 고르거나\n• 다시 촬영해 보세요."
+    : "일부 브라우저에서 카메라·앨범 연결 직후 파일이 비어 있을 수 있어요.\n\n• 앨범에서 같은 사진을 다시 선택하거나\n• 한 번 더 촬영해 보세요.";
+  return `사진을 불러오지 못했습니다.\n\n${tail}`;
+}
+
 /** 숨김은 display:none 대신 sr-only + label htmlFor 로 직연결 */
 export default function PhotoUpload({
   onPicked,
@@ -56,10 +91,11 @@ export default function PhotoUpload({
   const captureProp = !preferCamera || omitCapture ? undefined : true;
 
   async function processOne(file: File) {
-    if (!file.size) {
+    const usable = await coerceFileToReadableImage(file);
+    if (!usable || !usable.size) {
       throw new Error("사진이 아직 준비되지 않았거나 빈 파일입니다. 잠시 후 다시 선택해 주세요.");
     }
-    const compressed = await compressImage(file, {
+    const compressed = await compressImage(usable, {
       maxDimension: 1280,
       quality: 0.85,
       square,
@@ -77,13 +113,30 @@ export default function PhotoUpload({
     fileList: FileList | File[] | null | undefined,
     clearRefs: Array<RefObject<HTMLInputElement | null>>,
   ) {
-    const files = Array.from(fileList ?? []).filter((f) => f && f.size > 0);
-    if (files.length === 0) return;
+    const raw = Array.from(fileList ?? []).filter(Boolean) as File[];
+    if (raw.length === 0) return;
+
+    // 카메라 파이프라인이 한 틱 늦는 브라우저용
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+
     setBusy(true);
     try {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i]!;
-        if (files.length > 1) setBusyLabel(`${i + 1}/${files.length}`);
+      const prepared: File[] = [];
+      for (const f of raw) {
+        const c = await coerceFileToReadableImage(f);
+        if (c && c.size > 0) prepared.push(c);
+      }
+
+      if (prepared.length === 0) {
+        if (raw.length > 0) {
+          alert(emptyPhotoMessage());
+        }
+        return;
+      }
+
+      for (let i = 0; i < prepared.length; i++) {
+        const file = prepared[i]!;
+        if (prepared.length > 1) setBusyLabel(`${i + 1}/${prepared.length}`);
         try {
           await processOne(file);
         } catch (e) {

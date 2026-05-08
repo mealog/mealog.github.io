@@ -33,6 +33,30 @@ export class AIError extends Error {
   }
 }
 
+/** Gemini `generateContent` 가 무기한 대기하지 않도록 (느린 네트워크·API 지연) */
+const GEMINI_GENERATE_TIMEOUT_MS = 120_000;
+
+const GEMINI_TIMEOUT_MESSAGE =
+  "AI 응답이 너무 오래 걸렸습니다(약 2분). 네트워크 상태를 확인한 뒤 아래 「다시 시도」를 눌러 주세요.";
+
+function withGenerativeTimeout<T>(p: Promise<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new AIError(GEMINI_TIMEOUT_MESSAGE));
+    }, GEMINI_GENERATE_TIMEOUT_MS);
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
+
 function getModel(apiKey: string, modelName?: string): GenerativeModel {
   const genAI = new GoogleGenerativeAI(apiKey);
   return genAI.getGenerativeModel({
@@ -271,15 +295,17 @@ async function analyzeMealImageOnce(
   const model = getModel(apiKey, modelName);
   const base64 = await blobToBase64(forApi);
   try {
-    const res = await model.generateContent([
-      { text: buildMealPrompt(slot, profile) },
-      {
-        inlineData: {
-          mimeType: forApi.type || "image/jpeg",
-          data: base64,
+    const res = await withGenerativeTimeout(
+      model.generateContent([
+        { text: buildMealPrompt(slot, profile) },
+        {
+          inlineData: {
+            mimeType: forApi.type || "image/jpeg",
+            data: base64,
+          },
         },
-      },
-    ]);
+      ]),
+    );
     const text = res.response.text();
     const parsed = safeParseJson<MealAnalysis>(text);
     parsed.rating = Math.max(1, Math.min(5, Math.round(Number(parsed.rating) || 3)));
@@ -382,8 +408,10 @@ export async function reanalyzeMealFromText(
   }
   const model = getModel(apiKey.trim(), modelName);
   try {
-    const res = await model.generateContent(
-      buildReanalyzePrompt(input, slot, profile),
+    const res = await withGenerativeTimeout(
+      model.generateContent(
+        buildReanalyzePrompt(input, slot, profile),
+      ),
     );
     const text = res.response.text();
     const parsed = safeParseJson<MealAnalysis>(text);
@@ -475,15 +503,17 @@ async function analyzeHealthImageOnce(
   const base64 = await blobToBase64(forApi);
   const prompt = buildHealthPrompt(recordType, profile);
   try {
-    const res = await model.generateContent([
-      { text: prompt },
-      {
-        inlineData: {
-          mimeType: forApi.type || "image/jpeg",
-          data: base64,
+    const res = await withGenerativeTimeout(
+      model.generateContent([
+        { text: prompt },
+        {
+          inlineData: {
+            mimeType: forApi.type || "image/jpeg",
+            data: base64,
+          },
         },
-      },
-    ]);
+      ]),
+    );
     const text = res.response.text();
     const parsed = safeParseJson<HealthAnalysis>(text);
     parsed.healthScore = Math.max(
