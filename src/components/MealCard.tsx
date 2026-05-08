@@ -743,7 +743,7 @@ export function MealItemEditDialog({
               ) : (
                 <Wand2 size={14} />
               )}
-              저장하고 이 내용으로 AI 재분석
+              저장하고 이 내용으로 AI {variant === "addManual" ? "분석" : "재분석"}
             </button>
           )}
           <div className="flex gap-2">
