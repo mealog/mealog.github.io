@@ -31,6 +31,13 @@ dev-dist
 # TS incremental build cache
 *.tsbuildinfo
 
+# Bubblewrap — twa-manifest·스크립트·README 만 커밋 (나머지는 생성물)
+twa-android/*
+!twa-android/twa-manifest.json
+!twa-android/create-keystore.ps1
+!twa-android/setup-and-build.ps1
+!twa-android/README.md
+
 # Bubblewrap 안드로이드 패키지(서명 포함될 수 있음) — 보통 레포 바깥에 만들고, 디렉터리명을 로컬에만 둠
 android-shell/
 bubblewrap-output/

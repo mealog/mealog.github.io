@@ -33,18 +33,33 @@
 
 ---
 
-## 2단계: Bubblewrap 으로 Android 프로젝트 생성
+## 2단계: Android 프로젝트 생성·빌드
 
-1. JDK / Android 개발 도구 준비(공식 문서의 요구 버전 참고).
-2. 저장소 **밖**(또는 `android-shell/` 같은 별도 디렉터리) 에서 새 폴더를 만들 것을 권장합니다(생성 결과물은 용량·keystore 때문에 보통 깃 추적 안 함).
+**대화형 `init` 대신** 레포의 **`twa-android/twa-manifest.json`** 으로 패키지명·앱 이름·아이콘 URL 등을 이미 맞춰 두었습니다. JDK 설치 후 아래만 실행하면 됩니다.
+
+1. **[JDK 17](https://learn.microsoft.com/java/openjdk/download)** 설치 → `java -version` / `keytool` 확인  
+2. PowerShell (레포 루트 기준):
+
+   ```powershell
+   cd twa-android
+   $env:BUBBLEWRAP_KEYSTORE_PASSWORD = '첫설치용-강한비밀번호'
+   $env:BUBBLEWRAP_KEY_PASSWORD      = '위와동일또는별도'
+   .\setup-and-build.ps1
+   ```
+
+3. 같은 폴더에 **`app-release-bundle.aab`** 가 생성되면 Play Console에 업로드합니다.
+
+레포 **밖**에서 쓰려면 `twa-android` 폴더를 통째로 복사한 뒤 같은 스크립트를 실행하면 됩니다.
+
+> 첫 실행 시 Bubblewrap이 **JDK 자동 설치**를 물을 수 있습니다. 이미 JDK가 있으면 `n`(No) 후 `JAVA_HOME`이 잡힌 터미널에서 다시 실행하세요.
+
+**옛 방식(대화형 init)** 을 쓰려면 빈 폴더에서:
 
 ```bash
 npx --yes @bubblewrap/cli@latest init --manifest=https://muklog.github.io/manifest.webmanifest
 ```
 
-안내 질문에 **패키지명**(예: `io.github.muklog.app` 같은 **실제 고유값**)/앱 이름/서명을 입력합니다.
-
-- **최신 Bubblewrap CLI** 로 생성해 `compileSdkVersion` / `targetSdkVersion` 등을 현재 플레이 요구와 맞추는 것을 권장합니다.
+질문에 **패키지명** `io.github.muklog.app`(또는 레포 `assetlinks.json`·Firebase와 일치하는 값)을 입력합니다.
 
 ---
 
@@ -78,11 +93,11 @@ bubblewrap build
 
 ## `package.json` 스크립트
 
+로컬에서는 `twa-android/setup-and-build.ps1` 를 권장합니다. CLI만 보려면:
+
 ```bash
 npx --yes @bubblewrap/cli@latest --help
 ```
-
-위처럼 직접 호출하면 됩니다(대화형 `init` 이 있어 NPM 스크립트로 고정 두기는 어렵습니다).
 
 ---
 
