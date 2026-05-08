@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useFeedStream, type FeedAuthor, type FeedEntry } from "../contexts/FeedStreamContext";
@@ -54,8 +54,16 @@ export default function FeedPage() {
     return set.size > 0;
   }, [entries]);
 
+  const entriesLenRef = useRef(0);
+  entriesLenRef.current = entries.length;
+
   const [visibleCount, setVisibleCount] = useState(FEED_INITIAL_VISIBLE);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  /** 다른 탭에서 남은 main 스크롤이 있으면 감지 줄이 화면 밖으로 밀려 IO가 영원히 안 도는 경우가 있음 */
+  useLayoutEffect(() => {
+    document.querySelector<HTMLElement>("[data-app-scroll-root]")?.scrollTo(0, 0);
+  }, []);
 
   useEffect(() => {
     setVisibleCount((n) => Math.min(Math.max(n, FEED_INITIAL_VISIBLE), entries.length));
@@ -64,31 +72,72 @@ export default function FeedPage() {
   const visibleEntries =
     entries.length <= visibleCount ? entries : entries.slice(0, visibleCount);
 
-  /** 실제 세로 스크롤은 `window` 가 아니라 App 의 `<main data-app-scroll-root>` → root 를 맞춰야 교차 안정 */
+  /** IntersectionObserver + main 스크롤 보조(IO 첫 프레임 누락·스크롤 위치 오류 방지). entriesLenRef 로 콜백 스테일 길이 방지 */
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el || visibleCount >= entries.length) return;
 
-    const root = document.querySelector<HTMLElement>("[data-app-scroll-root]");
+    const main = document.querySelector<HTMLElement>("[data-app-scroll-root]");
+    let alive = true;
+
+    const bumpIfVisible = () => {
+      if (!alive) return;
+      const target = sentinelRef.current;
+      if (!target) return;
+      const len = entriesLenRef.current;
+      if (main) {
+        const m = main.getBoundingClientRect();
+        const s = target.getBoundingClientRect();
+        if (!(s.top < m.bottom && s.bottom > m.top)) return;
+      } else {
+        const s = target.getBoundingClientRect();
+        const vh = window.innerHeight;
+        if (!(s.top < vh && s.bottom > 0)) return;
+      }
+      setVisibleCount((prev) => (prev >= len ? prev : Math.min(prev + FEED_LOAD_MORE_COUNT, len)));
+    };
+
+    let scrollRaf = 0;
+    const onScroll = () => {
+      if (scrollRaf) return;
+      scrollRaf = requestAnimationFrame(() => {
+        scrollRaf = 0;
+        bumpIfVisible();
+      });
+    };
+
     const opts: IntersectionObserverInit = {
       rootMargin: "240px 0px",
       threshold: 0,
     };
-    if (root) opts.root = root;
-
+    if (main) opts.root = main;
     const obs = new IntersectionObserver(
       (records) => {
-        if (records.some((r) => r.isIntersecting)) {
-          setVisibleCount((prev) =>
-            prev >= entries.length ? prev : Math.min(prev + FEED_LOAD_MORE_COUNT, entries.length),
-          );
-        }
+        if (records.some((r) => r.isIntersecting)) bumpIfVisible();
       },
       opts,
     );
-
     obs.observe(el);
-    return () => obs.disconnect();
+
+    const scrollEl: HTMLElement | Window = main ?? window;
+    scrollEl.addEventListener("scroll", onScroll, { passive: true });
+
+    const rafId = requestAnimationFrame(() => {
+      bumpIfVisible();
+      requestAnimationFrame(bumpIfVisible);
+    });
+
+    /** 레이아웃·폰트·이미지 직후 한 번 더(첫 진입 때 IO만으로는 교차 보고가 없는 환경 대비) */
+    const tStale = window.setTimeout(bumpIfVisible, 300);
+
+    return () => {
+      alive = false;
+      cancelAnimationFrame(rafId);
+      window.clearTimeout(tStale);
+      if (scrollRaf) cancelAnimationFrame(scrollRaf);
+      scrollEl.removeEventListener("scroll", onScroll);
+      obs.disconnect();
+    };
   }, [visibleCount, entries.length]);
 
   return (
