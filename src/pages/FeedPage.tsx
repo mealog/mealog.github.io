@@ -21,15 +21,15 @@ import { getAppShareAbsoluteUrl } from "../lib/siteUrl";
 import FeedAlertsHeaderIcons from "../components/FeedAlertsHeaderIcons";
 import AddToHomeScreenButton from "../components/AddToHomeScreenButton";
 import { MEAL_SLOT_EMOJI, MEAL_SLOT_LABELS, type MealItem } from "../types";
-import { tabLoadingMessage } from "../lib/tabLoadingMessage";
+import { STALL_REFRESH_HINT, tabLoadingMessage } from "../lib/tabLoadingMessage";
 
 /**
  * 피드 탭 — 스트림은 App 의 FeedStreamProvider 에서 구독하고, 여기서는 렌더링만 합니다.
  * 친구별 식단 스트림은 Context 쪽 구독과 별개로, 카드가 화면에 있을 때만 좋아요·댓글 리스너가 붙으므로
- * 첫 번째 묶음을 작게 두면 초기 Firestore 사용을 줄일 수 있습니다.
+ * 첫 카드만 보이게 한 뒤 스크롤로 1개씩 늘려 Firestore·리스너 부담을 줄입니다.
  */
-const FEED_INITIAL_VISIBLE = 3;
-const FEED_LOAD_MORE_COUNT = 3;
+const FEED_INITIAL_VISIBLE = 1;
+const FEED_LOAD_MORE_COUNT = 1;
 
 export default function FeedPage() {
   const { pathname } = useLocation();
@@ -155,6 +155,7 @@ export default function FeedPage() {
               {myUid && (
                 <p className="text-xs text-slate-500">친구와 공유된 식단을 함께 가져오고 있어요.</p>
               )}
+              <p className="text-[11px] text-slate-500">{STALL_REFRESH_HINT}</p>
             </div>
           </div>
         ) : (
@@ -182,8 +183,13 @@ export default function FeedPage() {
             )}
 
             {visibleCount < entries.length && (
-              <div ref={sentinelRef} className="flex justify-center py-6" aria-hidden>
+              <div
+                ref={sentinelRef}
+                className="flex flex-col items-center gap-1 py-6 text-center"
+                aria-hidden
+              >
                 <span className="text-xs text-slate-500">더 불러오는 중…</span>
+                <span className="text-[11px] text-slate-500">{STALL_REFRESH_HINT}</span>
               </div>
             )}
           </>
