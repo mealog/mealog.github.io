@@ -175,6 +175,7 @@ export default function App() {
         >
           <main
             ref={bindMainRef}
+            {...(!isDmThreadRoute ? { "data-app-scroll-root": "" } : {})}
             className={
               isDmThreadRoute
                 ? "relative flex min-h-0 flex-1 touch-pan-y flex-col overflow-hidden overscroll-y-none overflow-x-hidden bg-slate-950 pb-24 [scrollbar-gutter:stable]"

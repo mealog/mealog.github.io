@@ -64,9 +64,17 @@ export default function FeedPage() {
   const visibleEntries =
     entries.length <= visibleCount ? entries : entries.slice(0, visibleCount);
 
+  /** 실제 세로 스크롤은 `window` 가 아니라 App 의 `<main data-app-scroll-root>` → root 를 맞춰야 교차 안정 */
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el || visibleCount >= entries.length) return;
+
+    const root = document.querySelector<HTMLElement>("[data-app-scroll-root]");
+    const opts: IntersectionObserverInit = {
+      rootMargin: "240px 0px",
+      threshold: 0,
+    };
+    if (root) opts.root = root;
 
     const obs = new IntersectionObserver(
       (records) => {
@@ -76,7 +84,7 @@ export default function FeedPage() {
           );
         }
       },
-      { root: null, rootMargin: "240px", threshold: 0 },
+      opts,
     );
 
     obs.observe(el);
@@ -186,11 +194,10 @@ export default function FeedPage() {
             {visibleCount < entries.length && (
               <div
                 ref={sentinelRef}
-                className="flex flex-col items-center gap-1 py-6 text-center"
+                className="flex flex-col items-center gap-1 py-5 text-center"
                 aria-hidden
               >
-                <span className="text-xs text-slate-500">더 불러오는 중…</span>
-                <span className="text-[11px] text-slate-500">{STALL_REFRESH_HINT}</span>
+                <span className="text-[11px] text-slate-500">아래로 스크롤하면 더 보여요</span>
               </div>
             )}
           </>
