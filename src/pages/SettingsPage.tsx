@@ -240,7 +240,7 @@ export default function SettingsPage() {
         </h2>
         <p className="mb-2 text-xs leading-snug text-slate-400">
           식단·건강 AI 분석에는{" "}
-          <strong className="font-semibold text-slate-200">Google AI API 키</strong>가 필요합니다. 무료 등급의
+          <strong className="font-semibold text-slate-200">Google API 키</strong>가 필요합니다. 무료 등급의
           키를 사용하시면 됩니다. 아래 사진을 확인한 후{" "}
           <a
             href="https://aistudio.google.com/app/apikey"
