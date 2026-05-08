@@ -18,6 +18,7 @@ import {
   deleteEntireMeal,
   deleteMealItem,
   saveMealItemPatch,
+  summarizePublishedMealItems,
   updateMealItem,
 } from "../lib/mealItems";
 import {
@@ -284,6 +285,7 @@ function SlotSection({ slot, date, userId, meal, apiKey, ownerUid }: SlotProps) 
     await deleteEntireMeal(meal.id, { ownerUid });
   }
 
+  const slotAgg = useMemo(() => summarizePublishedMealItems(items), [items]);
   const editingItem = items.find((it) => it.id === editingItemId) ?? null;
 
   return (
@@ -300,6 +302,21 @@ function SlotSection({ slot, date, userId, meal, apiKey, ownerUid }: SlotProps) 
             {items.length > 0 && (
               <p className="text-[11px] text-slate-400">
                 사진 {items.length}장
+                {slotAgg.publishedCount >= 2 &&
+                  (slotAgg.avgRating !== undefined || slotAgg.totalCalories !== undefined) && (
+                    <>
+                      {" · "}
+                      {slotAgg.avgRating !== undefined && (
+                        <span>평균 ★ {slotAgg.avgRating.toFixed(1)}</span>
+                      )}
+                      {slotAgg.avgRating !== undefined && slotAgg.totalCalories !== undefined && (
+                        <span> · </span>
+                      )}
+                      {slotAgg.totalCalories !== undefined && (
+                        <span>합계 {slotAgg.totalCalories} kcal</span>
+                      )}
+                    </>
+                  )}
               </p>
             )}
           </div>

@@ -13,7 +13,7 @@ interface Props {
   multipleGallery?: boolean;
   label?: string;
   className?: string;
-  /** 기본 후면 카메라. 일부 기기에서는 capture 를 끄는 편이 안정적(shouldOmitCaptureOnFileInputs). */
+  /** 기본 촬영 의도 (`capture`). 삼성 인터넷만 오류 회피로 생략(갤러리 버튼 사용 권장). */
   preferCamera?: boolean;
   variant?: "primary" | "ghost";
   disabled?: boolean;
@@ -52,8 +52,8 @@ export default function PhotoUpload({
   const [busy, setBusy] = useState(false);
   const [busyLabel, setBusyLabel] = useState<string | null>(null);
 
-  const captureAttr =
-    !preferCamera || omitCapture ? undefined : ("environment" as const);
+  /** 빈 capture(카메라 의도) — environment 는 일부 브라우저에서 갤러리만 뜸. 삼성 인터넷만 속성 생략. */
+  const captureProp = !preferCamera || omitCapture ? undefined : true;
 
   async function processOne(file: File) {
     if (!file.size) {
@@ -144,7 +144,7 @@ export default function PhotoUpload({
         id={camInputId}
         type="file"
         accept={GALLERY_FILE_ACCEPT}
-        {...(captureAttr ? { capture: captureAttr } : {})}
+        {...(captureProp !== undefined ? { capture: captureProp } : {})}
         disabled={blocked}
         className="sr-only"
         onPointerDown={() => clearInput(camRef.current)}

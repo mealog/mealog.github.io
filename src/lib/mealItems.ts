@@ -29,6 +29,28 @@ export function publicMealItems(items: MealItem[] | undefined): MealItem[] {
   return (items ?? []).filter((it) => !it.draft);
 }
 
+/** 식단 탭·끼니 헤더 요약 — 노출 항목(public) 2개 이상일 때 평균 별·칼로리 합 */
+export function summarizePublishedMealItems(items: MealItem[]): {
+  publishedCount: number;
+  avgRating?: number;
+  totalCalories?: number;
+} {
+  const pub = publicMealItems(items);
+  const n = pub.length;
+  if (n < 2) return { publishedCount: n };
+  const ratings = pub
+    .map((it) => it.rating)
+    .filter((r): r is number => typeof r === "number" && Number.isFinite(r));
+  const avgRating =
+    ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : undefined;
+  const cals = pub
+    .map((it) => it.nutrition?.calories)
+    .filter((c): c is number => typeof c === "number" && Number.isFinite(c) && c >= 0);
+  const totalCalories =
+    cals.length > 0 ? Math.round(cals.reduce((a, b) => a + b, 0)) : undefined;
+  return { publishedCount: n, avgRating, totalCalories };
+}
+
 /**
  * 편집 다이얼로그에서 사용자가 저장할 때 넘기는 값. (별점은 AI 전용이라 포함 안 됨.)
  * UI 컴포넌트(MealItemEditDialog) 와 이 헬퍼가 공유한다.
