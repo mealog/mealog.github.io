@@ -119,7 +119,7 @@ export default function HomePage() {
                   </span>
                   {items.length > 0 ? (
                     <span className="text-[10px] font-bold text-amber-400">
-                      {items.length > 1 ? `★ ${avg?.toFixed(1) ?? "-"} · ${items.length}개` : `★ ${avg?.toFixed(0) ?? "-"}`}
+                      ★ {avg !== undefined ? avg.toFixed(1) : "–"}
                     </span>
                   ) : (
                     <span className="text-[10px] text-slate-600">미기록</span>
