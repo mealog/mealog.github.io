@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Camera, Check, Image as ImageIcon, Loader2, Sparkles, X } from "lucide-react";
 import type { User as FirebaseUser } from "firebase/auth";
@@ -34,6 +34,7 @@ export default function AvatarPicker({ authUser, currentKind, onClose, onSave }:
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputId = useId();
 
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -72,13 +73,6 @@ export default function AvatarPicker({ authUser, currentKind, onClose, onSave }:
     } finally {
       setBusy(false);
     }
-  }
-
-  function openFilePicker() {
-    const el = fileInputRef.current;
-    if (!el) return;
-    el.value = "";
-    el.click();
   }
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -183,17 +177,19 @@ export default function AvatarPicker({ authUser, currentKind, onClose, onSave }:
         {/* 내 사진 업로드 */}
         <section className="mb-4">
           <h3 className="mb-2 text-xs font-semibold text-slate-300">내 사진 업로드</h3>
-          <button
-            type="button"
-            onClick={openFilePicker}
-            disabled={busy}
+          <label
+            htmlFor={fileInputId}
             className={cls(
-              "flex w-full items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-left transition-colors hover:bg-slate-900",
+              "flex w-full cursor-pointer items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-left transition-colors hover:bg-slate-900",
               currentKind === "upload" && "ring-2 ring-brand-500",
+              busy && "pointer-events-none opacity-55",
             )}
+            onPointerDown={() => {
+              if (fileInputRef.current) fileInputRef.current.value = "";
+            }}
           >
             <div className="flex h-12 w-12 items-center justify-center rounded-full border border-slate-800 bg-slate-900 text-slate-300">
-              <Camera size={20} />
+              <Camera size={20} aria-hidden />
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-slate-100">사진 선택 / 촬영</p>
@@ -201,13 +197,15 @@ export default function AvatarPicker({ authUser, currentKind, onClose, onSave }:
                 정사각형으로 자동 잘라요. 96x96 으로 저장돼 용량이 작아요.
               </p>
             </div>
-            {currentKind === "upload" && <Check size={16} className="text-brand-400" />}
-          </button>
+            {currentKind === "upload" && <Check size={16} className="text-brand-400 shrink-0" aria-hidden />}
+          </label>
           <input
             ref={fileInputRef}
+            id={fileInputId}
             type="file"
             accept="image/*"
-            className="hidden"
+            disabled={busy}
+            className="sr-only"
             onChange={(ev) => void handleUpload(ev)}
           />
         </section>
