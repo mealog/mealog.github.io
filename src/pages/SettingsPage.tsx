@@ -32,7 +32,6 @@ import { isEmbeddedBrowserLikelyBlockingGoogleOAuth } from "../lib/inAppBrowser"
 import EmbeddedGoogleLoginNotice from "../components/EmbeddedGoogleLoginNotice";
 import ProfileIdentitySection from "../components/ProfileIdentitySection";
 import GeminiApiKeyGuide from "../components/GeminiApiKeyGuide";
-import GeminiKeyClipboardAssist from "../components/GeminiKeyClipboardAssist";
 
 export default function SettingsPage() {
   const {
@@ -247,22 +246,15 @@ export default function SettingsPage() {
             rel="noreferrer"
             className="text-brand-400 underline"
           >
-            AI Studio API 키
+            Google AI API 키
           </a>
-          가 필요합니다. 로그인과 별개로 스튜디오에서 발급·복사합니다. 저장하면 같은 Google 계정으로 동기화돼요.
+          가 필요합니다. 무료 등급의 키를 사용하시면 됩니다. 아래 사진을 확인한 후 위의 링크를 클릭해서 키를 복사하고 돌아와주세요.
         </p>
 
         <div className="mb-2">
           <GeminiApiKeyGuide />
         </div>
 
-        <div className="mb-2">
-          <GeminiKeyClipboardAssist
-            onFilled={(k) => {
-              setApiKey(k);
-            }}
-          />
-        </div>
         <div className="space-y-2">
           <div className="relative">
             <input

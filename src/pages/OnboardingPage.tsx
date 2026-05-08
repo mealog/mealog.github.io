@@ -5,7 +5,6 @@ import { Loader2 } from "lucide-react";
 import AvatarBubble from "../components/AvatarBubble";
 import AvatarPicker, { type AvatarPick } from "../components/AvatarPicker";
 import GeminiApiKeyGuide from "../components/GeminiApiKeyGuide";
-import GeminiKeyClipboardAssist from "../components/GeminiKeyClipboardAssist";
 import FirebaseLoginCard from "../components/FirebaseLoginCard";
 import {
   db,
@@ -377,15 +376,6 @@ export default function OnboardingPage() {
         </p>
         <div className="mb-2">
           <GeminiApiKeyGuide compact />
-        </div>
-        <div className="mb-2">
-          <GeminiKeyClipboardAssist
-            disabled={!canContinueProfile}
-            onFilled={(k) => {
-              setApiKeyTouched(true);
-              setApiKey(k);
-            }}
-          />
         </div>
         <input
           value={apiKey}
