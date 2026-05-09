@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Sparkles, ChevronRight, Loader2, Plus } from "lucide-react";
-import { db, getSettings, runDexie } from "../lib/db";
+import { db, runDexie } from "../lib/db";
 import { requestAutoCloudSync } from "../lib/autoCloudSync";
 import { useAuth } from "../contexts/AuthContext";
 import { publicMealItems } from "../lib/mealItems";
@@ -16,7 +16,6 @@ export default function HomePage() {
   const [cursor, setCursor] = useState<Date>(new Date());
   const [selected, setSelected] = useState<string>(dateKey());
 
-  const settings = useLiveQuery(() => getSettings(), []);
   const { id: userId, loading: userLoading } = usePrimaryUserIdState();
   const { firebaseReady, user } = useAuth();
 
@@ -145,15 +144,6 @@ export default function HomePage() {
         </ul>
       </section>
 
-      {!settings?.geminiApiKey && (
-        <Link
-          to="/settings"
-          className="card flex items-center justify-between gap-3 border-slate-700 bg-slate-900/40 p-4"
-        >
-          <span className="text-sm text-slate-200">AI 분석 — 설정에서 Gemini 키</span>
-          <ChevronRight size={20} className="text-slate-500" />
-        </Link>
-      )}
     </div>
   );
 }

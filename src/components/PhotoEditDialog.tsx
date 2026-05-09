@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, Loader2, Proportions, RotateCcw, RotateCw, X } from "lucide-react";
+import { Check, Loader2, RotateCcw, RotateCw, X } from "lucide-react";
 import {
   clampPanForSquareCover,
   decodeImage,
@@ -14,8 +14,8 @@ import { cls } from "../lib/utils";
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 3.75;
-/** 미리보기 캔버스 백킹스토어 — 선명도(용량·GPU 부담과 타협) */
-const PREVIEW_DPR_CAP = 3;
+/** 미리보기는 CSS 픽셀에 맞춤 — 최종 압축 저장 분위기와 과도한 차이 안 나게 */
+const PREVIEW_DPR_CAP = 1;
 
 export type PhotoEditDialogProps = {
   file: File;
@@ -23,8 +23,6 @@ export type PhotoEditDialogProps = {
   onConfirm: (squareJpegBlob: Blob) => Promise<void> | void;
   /** 정사각 내보내기 한 변(px) — 서버 업로드 전 품질 */
   exportSidePx: number;
-  /** 예: 선택한 장 수 안내 */
-  queueHint?: string | null;
 };
 
 function touchDistance(a: Touch, b: Touch): number {
@@ -52,14 +50,13 @@ function touchLocal(t: Touch, el: HTMLElement): { x: number; y: number } {
 }
 
 /**
- * 정사각 프레임 미리보기·드래그·핀치 줌·좌우 90° 회전 후 확인.
+ * 정사각 미리보기·이동·핀치 줌·회전 후 확인.
  */
 export default function PhotoEditDialog({
   file,
   onClose,
   onConfirm,
   exportSidePx,
-  queueHint,
 }: PhotoEditDialogProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -85,6 +82,7 @@ export default function PhotoEditDialog({
   const RwRef = useRef(Rw);
   const RhRef = useRef(Rh);
   const busyRef = useRef(busyConfirm);
+  const confirmLockRef = useRef(false);
   previewPxRef.current = previewPx;
   zoomRef.current = zoom;
   panRef.current = pan;
@@ -196,7 +194,7 @@ export default function PhotoEditDialog({
     if (!ctx) return;
 
     ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
+    ctx.imageSmoothingQuality = "medium";
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const K = squareCoverScaleK(Rw, Rh, side, zoom);
     const c = clampPanForSquareCover(Rw, Rh, K, side, pan.x, pan.y);
@@ -331,8 +329,10 @@ export default function PhotoEditDialog({
     };
   }, [loading, decodeErr, rotCanvas]);
 
-  function resetToOriginalView() {
+  /** 줌·이동·회전 모두 초기 상태로 */
+  function resetToDefaults() {
     if (decodeErr || !decodedRef.current || busyConfirm || loading) return;
+    setQuarterTurns(0);
     setZoom(MIN_ZOOM);
     setPan({ x: 0, y: 0 });
   }
@@ -370,7 +370,10 @@ export default function PhotoEditDialog({
   };
 
   async function confirm() {
-    if (busyConfirm) return;
+    if (busyConfirm || confirmLockRef.current) return;
+
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
 
     const el = wrapRef.current;
     const measured = el ? Math.max(64, Math.floor(el.getBoundingClientRect().width)) : 0;
@@ -389,23 +392,54 @@ export default function PhotoEditDialog({
     const K = squareCoverScaleK(Rw, Rh, side, zoom);
     const clamped = clampPanForSquareCover(Rw, Rh, K, side, panForExportX, panForExportY);
 
-    setBusyConfirm(true);
+    let pixelBlob: Blob = file;
     try {
-      const blobFile = await exportSquareCropJpeg(file, {
-        quarterTurns,
-        zoom,
-        panX: clamped.panX,
-        panY: clamped.panY,
-        previewSidePx: side,
-        outputSidePx: exportSidePx,
-        jpegQuality: 0.92,
+      const ab = await file.arrayBuffer();
+      if (ab.byteLength < 24) {
+        alert(
+          "사진 데이터가 비어 있거나 카메라가 아직 저장 중이에요.\n잠시 후 다시 확인을 눌러 주세요.",
+        );
+        return;
+      }
+      pixelBlob = new Blob([ab], {
+        type: file.type && file.type.length > 0 ? file.type : "image/jpeg",
       });
-      await onConfirm(blobFile);
-    } catch (err) {
-      console.error("[PhotoEditDialog] 확인 처리 실패", err);
-      alert(err instanceof Error ? err.message : "사진을 저장하지 못했습니다.");
+    } catch (e) {
+      console.warn("[PhotoEditDialog] 픽셀 스냅샷 실패, File 직접 사용", e);
+    }
+
+    confirmLockRef.current = true;
+    setBusyConfirm(true);
+    let lastErr: unknown;
+    try {
+      for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+          if (attempt > 0) {
+            await new Promise<void>((r) => setTimeout(r, 200 * attempt));
+          }
+          const blobFile = await exportSquareCropJpeg(pixelBlob, {
+            quarterTurns,
+            zoom,
+            panX: clamped.panX,
+            panY: clamped.panY,
+            previewSidePx: side,
+            outputSidePx: exportSidePx,
+            jpegQuality: 0.92,
+          });
+          if (!blobFile?.size || blobFile.size < 48) {
+            throw new Error("사진을 만들었지만 데이터가 비어 있어요.");
+          }
+          await onConfirm(blobFile);
+          return;
+        } catch (err) {
+          lastErr = err;
+          console.warn("[PhotoEditDialog] 내보내기·전달 재시도", attempt + 1, err);
+        }
+      }
+      alert(lastErr instanceof Error ? lastErr.message : "사진을 저장하지 못했습니다.");
     } finally {
       setBusyConfirm(false);
+      confirmLockRef.current = false;
     }
   }
 
@@ -432,13 +466,8 @@ export default function PhotoEditDialog({
         >
           <div className="min-w-0 flex-1">
             <h2 id="photo-edit-title" className="text-base font-bold text-slate-100">
-              사진 맞추기
+              사진 확인
             </h2>
-            {queueHint ? (
-              <p id="photo-edit-queue-hint" className="mt-1 text-[11px] leading-snug text-slate-500">
-                {queueHint}
-              </p>
-            ) : null}
           </div>
           <button
             type="button"
@@ -451,14 +480,7 @@ export default function PhotoEditDialog({
           </button>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-4 px-4 pb-4 pt-3">
-          <p className="text-xs leading-relaxed text-slate-400">
-            정사각 안에 보이는 부분이 그대로 올라가요.{" "}
-            <span className="text-slate-200">한 손가락으로 밀어 위치</span>를 맞추고,{" "}
-            <span className="text-slate-200">두 손가락으로 확대·축소</span>할 수 있어요.
-            「원본 크기」는 처음에 맞춰 둔 기본 줌과 가운데로 되돌려요.
-          </p>
-
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-3 px-4 pb-4 pt-3">
           <div
             ref={wrapRef}
             className="relative mx-auto aspect-square w-full max-w-[min(100vw-2rem,360px)] overflow-hidden rounded-xl bg-slate-900 ring-1 ring-slate-800 shadow-inner"
@@ -488,42 +510,36 @@ export default function PhotoEditDialog({
             )}
           </div>
 
-          <div className="space-y-2 rounded-xl border border-slate-800/90 bg-slate-900/30 p-2.5">
-            <p className="px-0.5 text-[10px] font-medium uppercase tracking-wider text-slate-500">
-              보기
-            </p>
+          <div className="grid grid-cols-3 gap-1.5">
             <button
               type="button"
               disabled={busyConfirm || loading || !!decodeErr}
-              onClick={resetToOriginalView}
-              className="btn-secondary flex w-full items-center justify-center gap-2 rounded-lg py-3 text-sm font-medium disabled:opacity-40"
-              aria-label="확대 맞춤을 처음 크기와 가운데 위치로 되돌리기"
+              onClick={() => rotateBy(-1)}
+              className="btn-secondary inline-flex min-h-[44px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-2 text-[10px] font-medium leading-none text-slate-200 disabled:opacity-40 sm:flex-row sm:gap-1 sm:text-xs"
+              aria-label="반시계 방향으로 90도 회전"
             >
-              <Proportions size={18} aria-hidden />
-              원본 크기
+              <RotateCcw size={17} aria-hidden className="shrink-0 text-slate-300" />
+              <span>왼쪽</span>
             </button>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                disabled={busyConfirm || loading || !!decodeErr}
-                onClick={() => rotateBy(-1)}
-                className="btn-secondary inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg py-3 text-sm disabled:opacity-40"
-                aria-label="반시계 방향으로 90도 회전"
-              >
-                <RotateCcw size={18} aria-hidden className="shrink-0" />
-                <span>왼쪽</span>
-              </button>
-              <button
-                type="button"
-                disabled={busyConfirm || loading || !!decodeErr}
-                onClick={() => rotateBy(1)}
-                className="btn-secondary inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg py-3 text-sm disabled:opacity-40"
-                aria-label="시계 방향으로 90도 회전"
-              >
-                <RotateCw size={18} aria-hidden className="shrink-0" />
-                <span>오른쪽</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              disabled={busyConfirm || loading || !!decodeErr}
+              onClick={resetToDefaults}
+              className="btn-secondary inline-flex min-h-[44px] min-w-0 items-center justify-center rounded-lg px-1 py-2 text-[11px] font-semibold leading-tight text-slate-100 disabled:opacity-40 sm:text-sm"
+              aria-label="확대·위치·회전을 처음 상태로 되돌리기"
+            >
+              원래대로
+            </button>
+            <button
+              type="button"
+              disabled={busyConfirm || loading || !!decodeErr}
+              onClick={() => rotateBy(1)}
+              className="btn-secondary inline-flex min-h-[44px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-2 text-[10px] font-medium leading-none text-slate-200 disabled:opacity-40 sm:flex-row sm:gap-1 sm:text-xs"
+              aria-label="시계 방향으로 90도 회전"
+            >
+              <RotateCw size={17} aria-hidden className="shrink-0 text-slate-300" />
+              <span>오른쪽</span>
+            </button>
           </div>
         </div>
 

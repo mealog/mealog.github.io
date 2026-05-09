@@ -47,7 +47,7 @@ function clearInput(el: HTMLInputElement | null) {
 async function coerceFileToReadableImage(file: File): Promise<File | null> {
   if (file.size > 0) return file;
 
-  for (const ms of [0, 40, 120, 280]) {
+  for (const ms of [0, 50, 120, 280, 500, 800]) {
     if (ms > 0) {
       await new Promise<void>((r) => setTimeout(r, ms));
     }
@@ -65,6 +65,22 @@ async function coerceFileToReadableImage(file: File): Promise<File | null> {
     console.warn("[PhotoUpload] 빈 파일 arrayBuffer 시도 실패", e);
   }
   return null;
+}
+
+/** 편집·저장 파이프라인에서 같은 픽셀 버퍼를 쓰도록 메모리에 복사(WebView 카메라 파일 불안정 완화) */
+async function snapshotFilePixels(file: File): Promise<File | null> {
+  const readable = await coerceFileToReadableImage(file);
+  if (!readable?.size) return null;
+  try {
+    const buf = await readable.arrayBuffer();
+    if (buf.byteLength === 0) return null;
+    return new File([buf], readable.name || "photo.jpg", {
+      type: readable.type && readable.type.length > 0 ? readable.type : "image/jpeg",
+    });
+  } catch (e) {
+    console.warn("[PhotoUpload] snapshot arrayBuffer 실패, 읽기 가능한 파일 그대로 진행", e);
+    return readable;
+  }
 }
 
 function emptyPhotoMessage(): string {
@@ -109,20 +125,33 @@ export default function PhotoUpload({
   /** 빈 capture(카메라 의도) — environment 는 일부 브라우저에서 갤러리만 뜸. 삼성 인터넷만 속성 생략. */
   const captureProp = !preferCamera || omitCapture ? undefined : true;
 
-  /** 편집기에서 확인한 정사각 JPEG → 압축·썸네일·onPicked */
+  /** 편집 후 압축·DB 반영이 간헐적으로 실패하는 기기용 짧은 재시도 */
   async function finishEditedSquare(squareJpegBlob: Blob) {
-    const compressed = await compressImage(squareJpegBlob, {
-      maxDimension: 1280,
-      quality: 0.85,
-      square: false,
-      ...compressOptions,
-    });
-    const thumb = await compressImage(compressed, {
-      maxDimension: 320,
-      quality: 0.7,
-      square: false,
-    });
-    await onPicked(compressed, thumb);
+    let last: unknown;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        if (attempt > 0) {
+          await new Promise<void>((r) => setTimeout(r, 160 * attempt));
+        }
+        const compressed = await compressImage(squareJpegBlob, {
+          maxDimension: 1280,
+          quality: 0.85,
+          square: false,
+          ...compressOptions,
+        });
+        const thumb = await compressImage(compressed, {
+          maxDimension: 320,
+          quality: 0.7,
+          square: false,
+        });
+        await onPicked(compressed, thumb);
+        return;
+      } catch (e) {
+        last = e;
+        console.warn("[PhotoUpload] finishEditedSquare 재시도", attempt + 1, e);
+      }
+    }
+    throw last instanceof Error ? last : new Error(String(last ?? "저장 실패"));
   }
 
   async function processOne(file: File) {
@@ -158,8 +187,13 @@ export default function PhotoUpload({
     try {
       const prepared: File[] = [];
       for (const f of raw) {
-        const c = await coerceFileToReadableImage(f);
-        if (c && c.size > 0) prepared.push(c);
+        if (useEditor) {
+          const s = await snapshotFilePixels(f);
+          if (s && s.size > 0) prepared.push(s);
+        } else {
+          const c = await coerceFileToReadableImage(f);
+          if (c && c.size > 0) prepared.push(c);
+        }
       }
 
       if (prepared.length === 0) {
@@ -213,11 +247,6 @@ export default function PhotoUpload({
           key={`${editorFile.name}-${editorFile.size}-${editorFile.lastModified}-${editorQueue.length}`}
           file={editorFile}
           exportSidePx={squareCropExportSidePx}
-          queueHint={
-            editorQueue.length > 1
-              ? `${editorQueue.length}장을 순서대로 맞춥니다. 지금부터 확인하면 다음 장 편집 화면이 이어져요.`
-              : undefined
-          }
           onClose={() => {
             setEditorQueue([]);
           }}
@@ -228,8 +257,7 @@ export default function PhotoUpload({
             } catch (e) {
               console.error("[PhotoUpload] 편집 후 처리 실패", e);
               const detail = e instanceof Error ? e.message : String(e);
-              alert(`이미지를 저장하지 못했습니다.\n${detail}`);
-              setEditorQueue([]);
+              alert(`이미지를 저장하지 못했습니다.\n${detail}\n\n잠시 후 확인을 다시 눌러 주세요.`);
             }
           }}
         />

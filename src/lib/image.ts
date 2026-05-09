@@ -110,9 +110,21 @@ async function decodeWithHtmlImage(blob: Blob): Promise<DecodedImage> {
 }
 
 export async function decodeImage(blob: Blob): Promise<DecodedImage> {
-  const viaBitmap = await decodeWithImageBitmap(blob);
-  if (viaBitmap) return viaBitmap;
-  return decodeWithHtmlImage(blob);
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      if (attempt > 0) {
+        await new Promise<void>((r) => setTimeout(r, 140 * attempt));
+      }
+      const viaBitmap = await decodeWithImageBitmap(blob);
+      if (viaBitmap) return viaBitmap;
+      return await decodeWithHtmlImage(blob);
+    } catch (e) {
+      lastErr = e;
+      console.warn("[image] decodeImage 실패 후 재시도", attempt + 1, e);
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr ?? "이미지 디코드에 실패했습니다."));
 }
 
 /**

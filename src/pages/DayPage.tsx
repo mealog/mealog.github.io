@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ArrowLeft, ChevronDown, Loader2, Plus, Share2, Trash2 } from "lucide-react";
 import {
@@ -91,15 +91,6 @@ export default function DayPage() {
           <h1 className="text-lg font-bold">{formatKoDate(date)}</h1>
         </div>
       </header>
-
-      {!settings?.geminiApiKey && (
-        <Link
-          to="/settings"
-          className="card border-slate-700 bg-slate-900/40 px-4 py-3 text-xs text-slate-400"
-        >
-          AI 분석은 설정에 Gemini 키가 필요합니다.
-        </Link>
-      )}
 
       {!userId && userLoading && (
         <div className="card flex items-center justify-center gap-2 p-4 text-center text-sm text-slate-400">
