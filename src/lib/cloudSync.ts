@@ -325,8 +325,18 @@ async function mergeMeals(local: Meal[], remote: MealStored[]): Promise<Meal[]> 
     const r = rMap.get(id);
     if (!l) out.push(await storedToMeal(r!));
     else if (!r) out.push(l);
-    else if (l.updatedAt >= r.updatedAt) out.push(l);
-    else out.push(await hydrateMealPhotosFromLocal(await storedToMeal(r), l));
+    else if (l.updatedAt >= r.updatedAt) {
+      /**
+       * 로컬 타임스탬프만 이긴 상태에서 IndexedDB Blob 이 비어 있는 경우가 있다
+       * (클라이언트 재설치, Blob 역직렬화 실패 등). 원격 Storage/Base64 에서 채운다.
+       */
+      const needsRemotePhotos = l.items.some((it) => !itemHasRenderableImage(it));
+      out.push(
+        needsRemotePhotos
+          ? await hydrateMealPhotosFromLocal(l, await storedToMeal(r!))
+          : l,
+      );
+    } else out.push(await hydrateMealPhotosFromLocal(await storedToMeal(r), l));
   }
   return out;
 }
@@ -356,8 +366,14 @@ async function mergeHealth(local: HealthRecord[], remote: HealthStored[]): Promi
     const r = rMap.get(id);
     if (!l) out.push(await storedToHealth(r!));
     else if (!r) out.push(l);
-    else if (l.updatedAt >= r.updatedAt) out.push(l);
-    else out.push(await mergeHealthPhotosFromLocal(await storedToHealth(r), l));
+    else if (l.updatedAt >= r.updatedAt) {
+      const needsRemotePhoto = !healthHasRenderableImage(l);
+      out.push(
+        needsRemotePhoto
+          ? await mergeHealthPhotosFromLocal(l, await storedToHealth(r!))
+          : l,
+      );
+    } else out.push(await mergeHealthPhotosFromLocal(await storedToHealth(r), l));
   }
   return out;
 }
