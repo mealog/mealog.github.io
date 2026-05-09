@@ -212,8 +212,7 @@ function SlotSection({ slot, date, userId, meal, apiKey, ownerUid }: SlotProps) 
     const base = await mealRowForSlot();
     const currentItems = base?.items ?? [];
     if (currentItems.length >= MAX_MEAL_ITEMS) {
-      alert(`한 끼니에는 사진을 최대 ${MAX_MEAL_ITEMS}장까지 올릴 수 있어요.`);
-      return;
+      throw new Error(`한 끼니에는 사진을 최대 ${MAX_MEAL_ITEMS}장까지 올릴 수 있어요.`);
     }
     const now = Date.now();
     const itemId = uid();

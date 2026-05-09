@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, Loader2, RotateCw, X } from "lucide-react";
 import {
@@ -108,8 +108,8 @@ export default function PhotoEditDialog({
     };
   }, [file]);
 
-  /** 디코드 직후 + 회전 시: 동기 회전 적용. */
-  useEffect(() => {
+  /** 디코드 직후 + 회전 시: 페인트 전에 회전 캔버스 반영(확인 버튼·export 레이스 방지). */
+  useLayoutEffect(() => {
     const d = decodedRef.current;
     if (!d) return;
     const rot = rotatedSourceCanvas(d.source, d.width, d.height, quarterTurns);
@@ -117,6 +117,15 @@ export default function PhotoEditDialog({
     setRw(rot.width);
     setRh(rot.height);
   }, [decodedGeneration, quarterTurns]);
+
+  /** 미리보기 박스 실제 너비를 페인트 직후 동기 반영(ResizeObserver 전에 previewPx=0 으로 확인이 무반응 하던 경우 방지). */
+  useLayoutEffect(() => {
+    if (loading || !rotCanvas) return;
+    const el = wrapRef.current;
+    if (!el) return;
+    const w = Math.max(64, Math.floor(el.getBoundingClientRect().width));
+    setPreviewPx((p) => (p === w ? p : w));
+  }, [loading, rotCanvas, quarterTurns]);
 
   useEffect(() => {
     if (!rotCanvas || previewPx < 16 || Rw < 1) return;
@@ -188,9 +197,25 @@ export default function PhotoEditDialog({
   };
 
   async function confirm() {
-    if (!rotCanvas || previewPx < 16 || Rw < 1 || busyConfirm) return;
-    const K = squareCoverScaleK(Rw, Rh, previewPx, PREVIEW_ZOOM);
-    const clamped = clampPanForSquareCover(Rw, Rh, K, previewPx, pan.x, pan.y);
+    if (busyConfirm) return;
+
+    const el = wrapRef.current;
+    const measured = el ? Math.max(64, Math.floor(el.getBoundingClientRect().width)) : 0;
+    const side = Math.max(previewPx, measured, 64);
+
+    if (!rotCanvas || Rw < 1 || Rh < 1) {
+      alert("사진이 아직 화면에 준비되지 않았어요. 잠시 후 다시 눌러 주세요.");
+      return;
+    }
+
+    const pxUsed = previewPx >= 16 ? previewPx : side;
+    const panScale = side / pxUsed;
+    const panForExportX = pan.x * panScale;
+    const panForExportY = pan.y * panScale;
+
+    const K = squareCoverScaleK(Rw, Rh, side, PREVIEW_ZOOM);
+    const clamped = clampPanForSquareCover(Rw, Rh, K, side, panForExportX, panForExportY);
+
     setBusyConfirm(true);
     try {
       const blobFile = await exportSquareCropJpeg(file, {
@@ -198,7 +223,7 @@ export default function PhotoEditDialog({
         zoom: PREVIEW_ZOOM,
         panX: clamped.panX,
         panY: clamped.panY,
-        previewSidePx: previewPx,
+        previewSidePx: side,
         outputSidePx: exportSidePx,
         jpegQuality: 0.92,
       });
@@ -309,7 +334,9 @@ export default function PhotoEditDialog({
         >
           <button
             type="button"
-            disabled={busyConfirm || loading || !!decodeErr}
+            disabled={
+              busyConfirm || loading || !!decodeErr || !rotCanvas || Rw < 1 || Rh < 1
+            }
             className="btn-primary flex w-full items-center justify-center gap-2 py-3 disabled:opacity-40"
             onClick={() => void confirm()}
           >
