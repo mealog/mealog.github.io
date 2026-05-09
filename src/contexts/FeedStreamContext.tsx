@@ -94,6 +94,7 @@ export function FeedStreamProvider({ children }: { children: ReactNode }) {
       .slice(0, MAX_MINE);
   }, [myUserId]);
 
+  /** null 은 «아직 첫 스냅샷 전» — 전역 loading 에 묶으면 모바일에서 스냅샷 지연 시 내 피드까지 막힌다. */
   const [friendShares, setFriendShares] = useState<Share[] | null>(null);
   /** 빈 목록이 캐시(fromCache)에서 온 경우 서버 확인 전까지 피드를 잠깐 열었다가 로딩으로 덮는 깜빡임 방지 */
   const [outgoingSharesFromCache, setOutgoingSharesFromCache] = useState<boolean | null>(null);
@@ -122,17 +123,13 @@ export function FeedStreamProvider({ children }: { children: ReactNode }) {
   const [friendPublicByUid, setFriendPublicByUid] = useState<Map<string, PublicProfile>>(
     new Map(),
   );
-  /** publicProfiles 로딩 완료 전에는 share 에 박혀 있는 구글 이름이 잠깐 보였다가 바뀌는 깜빡임을 막는다 */
-  const [friendPublicProfilesReady, setFriendPublicProfilesReady] = useState(false);
   useEffect(() => {
     if (!friendShares?.length) {
       setFriendPublicByUid(new Map());
-      setFriendPublicProfilesReady(true);
       return;
     }
     let cancelled = false;
     const uids = [...new Set(friendShares.map((s) => s.ownerUid))];
-    setFriendPublicProfilesReady(false);
     void (async () => {
       const pairs = await Promise.all(
         uids.map(async (uid) => {
@@ -150,7 +147,6 @@ export function FeedStreamProvider({ children }: { children: ReactNode }) {
         if (p) next.set(uid, p);
       }
       setFriendPublicByUid(next);
-      setFriendPublicProfilesReady(true);
     })();
     return () => {
       cancelled = true;
@@ -266,14 +262,6 @@ export function FeedStreamProvider({ children }: { children: ReactNode }) {
     void patchSettings({ feedLastSeenMaxUpdatedAt: v });
   }, []);
 
-  /** 친구 공유 목록은 왔는데 각 owner 의 meals 스냅샷 전이면 빈 피드 카드가 깜빡임 → 키가 들어올 때까지 로딩 */
-  const awaitingFriendMealSnapshots =
-    feedFirestoreLive &&
-    firebaseReady &&
-    myUid !== undefined &&
-    (friendShares?.length ?? 0) > 0 &&
-    (friendShares ?? []).some((s) => !friendMealsByOwner.has(s.ownerUid));
-
   const emptyOutgoingAwaitingServer =
     feedFirestoreLive &&
     firebaseReady &&
@@ -288,24 +276,12 @@ export function FeedStreamProvider({ children }: { children: ReactNode }) {
     return () => window.clearTimeout(t);
   }, [emptyOutgoingAwaitingServer]);
 
-  /** 새로고침 직후에는 auth 가 잠깐 user=null 인 프레임이 있어 myUid 없이 loading 이 풀리며 옛 피드가 보였다가 다시 로딩되는 현상 방지 */
-  const awaitingFriendPublicProfiles =
-    feedFirestoreLive &&
-    firebaseReady &&
-    myUid !== undefined &&
-    (friendShares?.length ?? 0) > 0 &&
-    !friendPublicProfilesReady;
-
-  const loading =
-    authLoading ||
-    myMeals === undefined ||
-    (feedFirestoreLive &&
-      firebaseReady &&
-      myUid !== undefined &&
-      friendShares === null) ||
-    awaitingFriendMealSnapshots ||
-    emptyOutgoingAwaitingServer ||
-    awaitingFriendPublicProfiles;
+  /**
+   * 내 피드(Dexie)는 `myMeals` 준비만으로 그릴 수 있다.
+   * 친구 shares / meals / 프로필은 늦게 붙어도 목록에 합쳐지면 되고, 그걸 전역 loading 으로 묶으면
+   * 모바일(Samsung 브라우저 등)에서 Firestore 스냅샷이 늦을 때 피드 전체가 비는 문제가 생긴다.
+   */
+  const loading = authLoading || myMeals === undefined;
 
   useEffect(() => {
     if (loading) return;
