@@ -26,11 +26,12 @@ import { STALL_REFRESH_HINT } from "../lib/tabLoadingMessage";
 
 /**
  * 피드 탭 — 스트림은 App 의 FeedStreamProvider 에서 구독하고, 여기서는 렌더링만 합니다.
- * 친구별 식단 스트림은 Context 쪽 구독과 별개로, 카드가 화면에 있을 때만 좋아요·댓글 리스너가 붙으므로
- * 첫 카드만 보이게 한 뒤 스크롤로 1개씩 늘려 Firestore·리스너 부담을 줄입니다.
+ * 카드별 좋아요·댓글 리스너 부담을 줄이기 위해 초깃값만 제한 두되, 높은 뷰포트에서 센티널이
+ * 계속 보이면 한 번에 여러 카드를 채워 «한 개만 보이고 스크롤 불가» 를 막습니다.
  */
 const FEED_INITIAL_VISIBLE = 1;
-const FEED_LOAD_MORE_COUNT = 1;
+/** 짧은 첫 카드 + 큰 창: bump 시 한 번에 부풀릴 카드 수(이후 레이아웃 시 한 장씩 더 채움) */
+const FEED_LOAD_BURST = 4;
 
 export default function FeedPage() {
   const { user, firebaseReady, loading: authLoading } = useAuth();
@@ -58,6 +59,8 @@ export default function FeedPage() {
 
   const [visibleCount, setVisibleCount] = useState(FEED_INITIAL_VISIBLE);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  /** 짧은 카드 + 높은 뷰포트에서 레이아웃 루프가 끝나지 않게 상한 */
+  const layoutFillPassesRef = useRef(0);
 
   /** 다른 탭에서 남은 main 스크롤이 있으면 감지 줄이 화면 밖으로 밀려 IO가 영원히 안 도는 경우가 있음 */
   useLayoutEffect(() => {
@@ -65,11 +68,30 @@ export default function FeedPage() {
   }, []);
 
   useEffect(() => {
+    layoutFillPassesRef.current = 0;
     setVisibleCount((n) => Math.min(Math.max(n, FEED_INITIAL_VISIBLE), entries.length));
   }, [entries.length]);
 
   const visibleEntries =
     entries.length <= visibleCount ? entries : entries.slice(0, visibleCount);
+
+  /**
+   * PC 등 뷰포트가 높을 때 첫 카드만 짧아도 센티널이 보이지만 IntersectionObserver/스크롤이 한 번만
+   * 카운트를 올려 «스크롤이 필요 없음» 상태가 된다. 레이아웃 직후 센티널이 여전히 보이면 카드를 더 연다.
+   */
+  useLayoutEffect(() => {
+    if (!streamReady || entries.length === 0) return;
+    if (visibleCount >= entries.length) return;
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const vh = typeof window !== "undefined" ? window.innerHeight : 0;
+    if (!(vh > 0)) return;
+    const r = sentinel.getBoundingClientRect();
+    if (!(r.bottom > 0 && r.top < vh)) return;
+    layoutFillPassesRef.current += 1;
+    if (layoutFillPassesRef.current > 72) return;
+    setVisibleCount((c) => Math.min(c + FEED_LOAD_BURST, entries.length));
+  }, [streamReady, entries.length, visibleCount, visibleEntries.length]);
 
   /** IntersectionObserver + main 스크롤 보조(IO 첫 프레임 누락·스크롤 위치 오류 방지). entriesLenRef 로 콜백 스테일 길이 방지 */
   useEffect(() => {
@@ -88,7 +110,7 @@ export default function FeedPage() {
       const s = target.getBoundingClientRect();
       const vh = typeof window !== "undefined" ? window.innerHeight : 0;
       if (!(vh > 0 && s.bottom > 0 && s.top < vh)) return;
-      setVisibleCount((prev) => (prev >= len ? prev : Math.min(prev + FEED_LOAD_MORE_COUNT, len)));
+      setVisibleCount((prev) => (prev >= len ? prev : Math.min(prev + FEED_LOAD_BURST, len)));
     };
 
     let scrollRaf = 0;

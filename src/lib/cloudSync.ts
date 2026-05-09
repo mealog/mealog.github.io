@@ -26,7 +26,7 @@ import {
   uploadMealItemImages,
 } from "./userMediaStorage";
 import { dateKey } from "./utils";
-import { friendFeedShareableMealItems } from "./mealItems";
+import { publicMealItems } from "./mealItems";
 
 const BATCH = 400;
 /** Firestore 문서 상한 근처 — 메타(JSON) 크기 검사만(사진 바이너리는 Storage). */
@@ -623,6 +623,9 @@ async function pullPrivateSettings(uid: string): Promise<PrivateSettingsDoc | nu
  * Meal 한 건을 Firestore 문서 + Storage 로 변환한다.
  * 이미지는 Storage(`users/{uid}/media/meals/...`), 문서에는 경로 메타만 둔다.
  * 과거 데이터는 pull 시 기존 Base64 도 여전히 읽는다.
+ *
+ * 피드 UX 는 `friendFeedShareableMealItems` 로 걸러도, 동기화에는 **초안이 아닌 전 항목**을 실어야
+ * `isMealPhoto === false` 등으로 클라우드에서 빠졌던 사진도 사용자 본인은 복구·기기 간 일치된다.
  */
 async function mealToStored(m: Meal, ownerFirebaseUid: string): Promise<MealStored | null> {
   const base: Omit<MealStored, "items"> = {
@@ -635,7 +638,7 @@ async function mealToStored(m: Meal, ownerFirebaseUid: string): Promise<MealStor
   };
   const rawItems = m.items ?? [];
   const published = rawItems.filter((it) => !it.draft);
-  const items = friendFeedShareableMealItems(rawItems);
+  const cloudItems = publicMealItems(rawItems);
 
   if (rawItems.length === 0) {
     return { ...base, items: [] };
@@ -643,11 +646,6 @@ async function mealToStored(m: Meal, ownerFirebaseUid: string): Promise<MealStor
 
   /** 초안만 있으면 과거처럼 푸시 생략 */
   if (published.length === 0) {
-    return null;
-  }
-
-  /** 비공유만 남았을 때 빈 items 로 덮어쓰면 원격 updatedAt 레이스로 로컬 사진이 소실되므로 푸시 생략(친구 피드는 렌더 시 거름) */
-  if (items.length === 0) {
     return null;
   }
 
@@ -668,7 +666,7 @@ async function mealToStored(m: Meal, ownerFirebaseUid: string): Promise<MealStor
   }
 
   const stored: MealItemStored[] = [];
-  for (const it of items) {
+  for (const it of cloudItems) {
     const meta = toItemMeta(it);
     const source = it.photo?.size ? it.photo : it.thumbnail?.size ? it.thumbnail : null;
     if (!source) {
