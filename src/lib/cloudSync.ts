@@ -26,6 +26,7 @@ import {
   uploadMealItemImages,
 } from "./userMediaStorage";
 import { dateKey } from "./utils";
+import { friendFeedShareableMealItems } from "./mealItems";
 
 const BATCH = 400;
 /** Firestore 문서 상한 근처 — 메타(JSON) 크기 검사만(사진 바이너리는 Storage). */
@@ -504,12 +505,21 @@ async function mealToStored(m: Meal, ownerFirebaseUid: string): Promise<MealStor
     updatedAt: m.updatedAt,
   };
   const rawItems = m.items ?? [];
-  const items = rawItems.filter((it) => !it.draft);
-  if (items.length === 0) {
-    if (rawItems.length === 0) {
-      return { ...base, items: [] };
-    }
+  const published = rawItems.filter((it) => !it.draft);
+  const items = friendFeedShareableMealItems(rawItems);
+
+  if (rawItems.length === 0) {
+    return { ...base, items: [] };
+  }
+
+  /** 초안만 있으면 과거처럼 푸시 생략 */
+  if (published.length === 0) {
     return null;
+  }
+
+  /** 공개만 있는데 전부 피드 비공유(예: 비음식 판별)면 친구 피드를 비우도록 빈 items 로 덮어씀 */
+  if (items.length === 0) {
+    return { ...base, items: [] };
   }
 
   function toItemMeta(it: MealItem): MealItemStored {
@@ -522,6 +532,7 @@ async function mealToStored(m: Meal, ownerFirebaseUid: string): Promise<MealStor
       analysisStatus: it.analysisStatus,
       analysisError: it.analysisError,
       manuallyEdited: it.manuallyEdited,
+      isMealPhoto: it.isMealPhoto,
       createdAt: it.createdAt,
       updatedAt: it.updatedAt,
     };

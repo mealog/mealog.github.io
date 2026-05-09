@@ -17,7 +17,7 @@ import {
   getPublicProfile,
 } from "../lib/friends";
 import { removePullRefreshSplash } from "../lib/pullRefreshSplash";
-import { publicMealItems } from "../lib/mealItems";
+import { friendFeedShareableMealItems } from "../lib/mealItems";
 import type { Meal, PublicProfile, Share } from "../types";
 import { useAuth } from "./AuthContext";
 import { usePrimaryUserId } from "../hooks/usePrimaryUserId";
@@ -211,7 +211,7 @@ export function FeedStreamProvider({ children }: { children: ReactNode }) {
       color: myProfile?.color,
     };
     for (const m of myMeals ?? []) {
-      const pubItems = publicMealItems(m.items);
+      const pubItems = friendFeedShareableMealItems(m.items);
       if (pubItems.length === 0) continue;
       out.push({ author: myAuthor, meal: { ...m, items: pubItems }, isMine: true });
     }
@@ -222,7 +222,7 @@ export function FeedStreamProvider({ children }: { children: ReactNode }) {
       const pubPhoto = pub?.photoURL?.trim();
       const sharePhoto = share.ownerPhotoURL?.trim();
       for (const m of rows) {
-        const pubItems = publicMealItems(m.items);
+        const pubItems = friendFeedShareableMealItems(m.items);
         if (pubItems.length === 0) continue;
         out.push({
           author: {

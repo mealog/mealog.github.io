@@ -250,6 +250,7 @@ function SlotSection({ slot, date, userId, meal, apiKey, ownerUid }: SlotProps) 
         rating: result.rating,
         aiComment: result.aiComment,
         nutrition: result.nutrition,
+        isMealPhoto: result.isMealPhoto,
         analysisStatus: "done",
         analysisError: undefined,
         manuallyEdited: false,

@@ -103,6 +103,11 @@ export interface MealItem {
     healthTags?: string[];
   };
   analysisStatus: "pending" | "analyzing" | "done" | "error" | "skipped";
+  /**
+   * AI 가 사진에 식사·먹을거리가 분명히 보인다고 판단한 경우 true.
+   * false 면 피드·친구 공유 동기화에서 제외(편집으로 수동 저장하면 다시 포함 가능).
+   */
+  isMealPhoto?: boolean;
   analysisError?: string;
   /** 사용자가 분석 결과를 수동으로 수정했는지 — UI 에 '수정됨' 배지 표시용. */
   manuallyEdited?: boolean;

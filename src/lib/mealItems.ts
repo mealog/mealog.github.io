@@ -29,6 +29,18 @@ export function publicMealItems(items: MealItem[] | undefined): MealItem[] {
   return (items ?? []).filter((it) => !it.draft);
 }
 
+/**
+ * 내·친구 피드 카드와 친구 공유 Firestore 업로드에 넣을 항목만.
+ * 음식이 아니라고 AI 가 판별한 확정 결과(`isMealPhoto === false`)는 제외(수동 편집 저장은 포함).
+ */
+export function friendFeedShareableMealItems(items: MealItem[] | undefined): MealItem[] {
+  return publicMealItems(items).filter((it) => {
+    if (it.manuallyEdited) return true;
+    if (it.analysisStatus === "done" && it.isMealPhoto === false) return false;
+    return true;
+  });
+}
+
 /** 식단 탭·끼니 헤더 요약 — 노출 항목(public) 2개 이상일 때 평균 별·칼로리 합 */
 export function summarizePublishedMealItems(items: MealItem[]): {
   publishedCount: number;
@@ -188,6 +200,7 @@ export async function saveMealItemPatch(
     analysisStatus: opts.reanalyze && ctx.apiKey ? "analyzing" : "done",
     analysisError: undefined,
     manuallyEdited: !(opts.reanalyze && ctx.apiKey),
+    ...(!(opts.reanalyze && ctx.apiKey) ? { isMealPhoto: true } : {}),
   }));
 
   if (!opts.reanalyze) return { reanalyzed: false };
@@ -213,6 +226,7 @@ export async function saveMealItemPatch(
       rating: result.rating,
       aiComment: result.aiComment,
       nutrition: result.nutrition,
+      isMealPhoto: true,
       analysisStatus: "done",
       analysisError: undefined,
       manuallyEdited: false,

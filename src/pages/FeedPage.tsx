@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useFeedStream, type FeedAuthor, type FeedEntry } from "../contexts/FeedStreamContext";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -22,7 +22,7 @@ import { getAppShareAbsoluteUrl } from "../lib/siteUrl";
 import FeedAlertsHeaderIcons from "../components/FeedAlertsHeaderIcons";
 import AddToHomeScreenButton from "../components/AddToHomeScreenButton";
 import { MEAL_SLOT_EMOJI, MEAL_SLOT_LABELS, type MealItem } from "../types";
-import { STALL_REFRESH_HINT, tabLoadingMessage } from "../lib/tabLoadingMessage";
+import { STALL_REFRESH_HINT } from "../lib/tabLoadingMessage";
 
 /**
  * 피드 탭 — 스트림은 App 의 FeedStreamProvider 에서 구독하고, 여기서는 렌더링만 합니다.
@@ -33,7 +33,6 @@ const FEED_INITIAL_VISIBLE = 1;
 const FEED_LOAD_MORE_COUNT = 1;
 
 export default function FeedPage() {
-  const { pathname } = useLocation();
   const { user, firebaseReady, loading: authLoading } = useAuth();
   const fs = useFeedStream();
   const entries = fs?.entries ?? [];
@@ -209,7 +208,6 @@ export default function FeedPage() {
           >
             <Loader2 className="h-7 w-7 shrink-0 animate-spin text-brand-400" aria-hidden />
             <div className="space-y-1">
-              <p className="text-sm font-medium text-slate-200">{tabLoadingMessage(pathname)}</p>
               {myUid && (
                 <p className="text-xs text-slate-500">친구와 공유된 식단을 함께 가져오고 있어요.</p>
               )}
@@ -353,6 +351,7 @@ function FeedCard({ entry, showSocial, myFirebaseUid, myUserId, myApiKey }: Feed
           rating: result.rating,
           aiComment: result.aiComment,
           nutrition: result.nutrition,
+          isMealPhoto: result.isMealPhoto,
           analysisStatus: "done",
           analysisError: undefined,
           manuallyEdited: false,
