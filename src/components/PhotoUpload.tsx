@@ -41,46 +41,36 @@ function clearInput(el: HTMLInputElement | null) {
 }
 
 /**
- * 삼성 인터넷 등에서 카메라 촬영 직후 `File.size === 0` 인 채로 넘어오는 경우가 있음.
- * 짧게 기다리거나 `arrayBuffer()` 로 읽으면 실제 픽셀 데이터가 들어 있는 경우가 있다.
+ * 카메라(WebView·모바일 크롬)에서는 촬영 직후 `size`만 갱신되고 `arrayBuffer()`가 비었다가
+ * 늦게 채워지는 경우가 있다. 원본 File 핸들을 그대로 넘기지 않고, 읽기에 성공한 바이트로만 File을 만든다.
  */
 async function coerceFileToReadableImage(file: File): Promise<File | null> {
-  if (file.size > 0) return file;
+  const steps = [0, 50, 120, 280, 500, 800, 1200, 1800, 2600];
+  const mime = file.type && file.type.length > 0 ? file.type : "image/jpeg";
+  const name = file.name || "photo.jpg";
 
-  for (const ms of [0, 50, 120, 280, 500, 800]) {
+  for (let i = 0; i < steps.length; i++) {
+    const ms = steps[i]!;
     if (ms > 0) {
       await new Promise<void>((r) => setTimeout(r, ms));
     }
-    if (file.size > 0) return file;
-  }
-
-  try {
-    const buf = await file.arrayBuffer();
-    if (buf.byteLength > 0) {
-      return new File([buf], file.name || "photo.jpg", {
-        type: file.type && file.type.length > 0 ? file.type : "image/jpeg",
-      });
+    try {
+      const buf = await file.arrayBuffer();
+      if (buf.byteLength > 0) {
+        return new File([buf], name, { type: mime });
+      }
+    } catch (e) {
+      if (i === steps.length - 1) {
+        console.warn("[PhotoUpload] 카메라·앨범 파일 읽기 실패", e);
+      }
     }
-  } catch (e) {
-    console.warn("[PhotoUpload] 빈 파일 arrayBuffer 시도 실패", e);
   }
   return null;
 }
 
-/** 편집·저장 파이프라인에서 같은 픽셀 버퍼를 쓰도록 메모리에 복사(WebView 카메라 파일 불안정 완화) */
-async function snapshotFilePixels(file: File): Promise<File | null> {
-  const readable = await coerceFileToReadableImage(file);
-  if (!readable?.size) return null;
-  try {
-    const buf = await readable.arrayBuffer();
-    if (buf.byteLength === 0) return null;
-    return new File([buf], readable.name || "photo.jpg", {
-      type: readable.type && readable.type.length > 0 ? readable.type : "image/jpeg",
-    });
-  } catch (e) {
-    console.warn("[PhotoUpload] snapshot arrayBuffer 실패, 읽기 가능한 파일 그대로 진행", e);
-    return readable;
-  }
+/** 편집 큐용: 메모리에 고정된 한 벌의 바이트 (카메라 핸들 타이밍 이슈 완화) */
+function snapshotFilePixels(file: File): Promise<File | null> {
+  return coerceFileToReadableImage(file);
 }
 
 function emptyPhotoMessage(): string {
@@ -180,8 +170,12 @@ export default function PhotoUpload({
     const raw = Array.from(fileList ?? []).filter(Boolean) as File[];
     if (raw.length === 0) return;
 
-    // 카메라 파이프라인이 한 틱 늦는 브라우저용
-    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    // 카메라 앱 복귀 직후 change 이벤트가 빈 상태로 도는 브라우저용 추가 틱
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => resolve());
+      });
+    });
 
     setBusy(true);
     try {
