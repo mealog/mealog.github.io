@@ -8,7 +8,7 @@ import { isRenderableImageBlob } from "../lib/image";
 import { useBlobImgSrc } from "./useBlobImgSrc";
 
 /** 뷰포트 밖도 넉넉히 미리 받기 — 너무 크면 동시 요청만 늘어남 */
-const IO_ROOT_MARGIN = "900px 0px";
+const IO_ROOT_MARGIN = "1200px 0px";
 
 const noopRef: RefCallback<HTMLDivElement> = () => {};
 
@@ -71,7 +71,7 @@ export function useMealItemCardImageSrc(
 
     const checkVisible = () => {
       const r = rootEl.getBoundingClientRect();
-      const m = 900;
+      const m = 1200;
       const vh = window.innerHeight;
       if (r.bottom > -m && r.top < vh + m) setShouldFetch(true);
     };

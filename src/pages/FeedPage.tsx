@@ -23,6 +23,7 @@ import FeedAlertsHeaderIcons from "../components/FeedAlertsHeaderIcons";
 import AddToHomeScreenButton from "../components/AddToHomeScreenButton";
 import { MEAL_SLOT_EMOJI, MEAL_SLOT_LABELS, type MealItem } from "../types";
 import { STALL_REFRESH_HINT } from "../lib/tabLoadingMessage";
+import { prefetchDownloadUrlsForStoragePaths } from "../lib/userMediaStorage";
 
 /**
  * 피드 탭 — 스트림은 App 의 FeedStreamProvider 에서 구독하고, 여기서는 렌더링만 합니다.
@@ -34,7 +35,7 @@ const FEED_INITIAL_VISIBLE = 1;
 /** 스크롤 후 센티널·교차 시 한 번에 펼칠 카드 수 — 1장씩이면 체감이 느려져 묶음 로드 */
 const FEED_LOAD_CHUNK = 5;
 /** 피드 상단 N개 카드는 Storage 썸네일을 IO 대기 없이 바로 요청해 회색 로딩을 줄임 */
-const FEED_EAGER_IMAGE_CARDS = 12;
+const FEED_EAGER_IMAGE_CARDS = 24;
 
 export default function FeedPage() {
   const { user, firebaseReady, loading: authLoading } = useAuth();
@@ -51,6 +52,19 @@ export default function FeedPage() {
 
   const markWatermark = fs?.markFeedWatermark;
   useEffect(() => () => void markWatermark?.(), [markWatermark]);
+
+  /** 상단 피드 썸네일 URL 선요청 — 캐시에 넣어 두면 카드 마운트 시 바로 표시 */
+  useEffect(() => {
+    if (!streamReady || !settled || entries.length === 0) return;
+    const paths: string[] = [];
+    for (const e of entries.slice(0, 28)) {
+      for (const it of (e.meal.items ?? []).slice(0, 2)) {
+        const p = it.thumbStoragePath || it.photoStoragePath;
+        if (p) paths.push(p);
+      }
+    }
+    prefetchDownloadUrlsForStoragePaths(paths, 48);
+  }, [streamReady, settled, entries]);
 
   const hasFriends = useMemo(() => {
     const set = new Set<string>();

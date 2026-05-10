@@ -114,13 +114,28 @@ export function canonicalStorageReadPath(normalizedObjectPath: string): string {
 
 /** 동일 경로 동시 요청 합치기 — 피드에서 같은 썸네일을 여러 번 받지 않음 */
 const downloadUrlInflight = new Map<string, Promise<string>>();
+/** 세션 내 재사용 — 스크롤·재마운트 시 getDownloadURL 반복 호출 방지 */
+const downloadUrlCache = new Map<string, string>();
+const MAX_DOWNLOAD_URL_CACHE = 480;
+
+function rememberDownloadUrl(canonicalPath: string, url: string) {
+  downloadUrlCache.set(canonicalPath, url);
+  while (downloadUrlCache.size > MAX_DOWNLOAD_URL_CACHE) {
+    const k = downloadUrlCache.keys().next().value;
+    if (k === undefined) break;
+    downloadUrlCache.delete(k);
+  }
+}
 
 /**
  * 피드 등 `<img src>` 용 — getBlob+XHR+프리플라이트 대신 짧은 메타 요청 후 브라우저가 이미지를 직접 받는다.
  */
 export async function getDownloadUrlForStoragePath(storagePathOrUrl: string): Promise<string> {
-  const path = canonicalStorageReadPath(normalizeStorageObjectPath(storagePathOrUrl));
+  const path = canonicalStorageReadPath(normalizeStorageObjectPath(storagePathOrUrl.trim()));
   if (!path) throw new Error("empty storage path");
+
+  const cached = downloadUrlCache.get(path);
+  if (cached) return cached;
 
   let inflight = downloadUrlInflight.get(path);
   if (inflight) return inflight;
@@ -133,13 +148,17 @@ export async function getDownloadUrlForStoragePath(storagePathOrUrl: string): Pr
     }
 
     try {
-      return await urlFor(path);
+      const url = await urlFor(path);
+      rememberDownloadUrl(path, url);
+      return url;
     } catch (e) {
       const authUid = getFirebaseAuth().currentUser?.uid;
       const match = /^users\/([^/]+)\/(.+)$/.exec(path);
       if (authUid && match && match[1] !== authUid) {
         try {
-          return await urlFor(`users/${authUid}/${match[2]}`);
+          const url = await urlFor(`users/${authUid}/${match[2]}`);
+          rememberDownloadUrl(path, url);
+          return url;
         } catch {
           /* 원 오류 */
         }
@@ -152,6 +171,19 @@ export async function getDownloadUrlForStoragePath(storagePathOrUrl: string): Pr
 
   downloadUrlInflight.set(path, inflight);
   return inflight;
+}
+
+/** 피드 진입 시 상단 카드 썸네일 URL 을 미리 채워 로딩 체감을 줄임 */
+export function prefetchDownloadUrlsForStoragePaths(paths: string[], max = 48): void {
+  const seen = new Set<string>();
+  let n = 0;
+  for (const raw of paths) {
+    const p = canonicalStorageReadPath(normalizeStorageObjectPath(raw.trim()));
+    if (!p || seen.has(p) || n >= max) continue;
+    seen.add(p);
+    n++;
+    void getDownloadUrlForStoragePath(p).catch(() => {});
+  }
 }
 
 export async function blobFromStoragePath(storagePathOrUrl: string): Promise<Blob> {

@@ -23,6 +23,19 @@ import { useAuth } from "./AuthContext";
 import { usePrimaryUserId } from "../hooks/usePrimaryUserId";
 import { resolveDisplayName, resolveDisplayPhotoURL } from "../lib/identity";
 
+const FEED_FRIENDS_GATE_MS = 4200;
+
+/** 공유 문서의 ownerName 이 이메일·UID 같이 보이면 닉네임 로딩 전까지 노출하지 않음 */
+function feedFriendDisplayName(share: Share, pub: PublicProfile | undefined): string {
+  const fromPub = pub?.displayName?.trim();
+  if (fromPub) return fromPub;
+  const raw = share.ownerName?.trim() ?? "";
+  if (raw.includes("@")) return "친구";
+  if (/^[a-zA-Z0-9_-]{20,36}$/.test(raw)) return "친구";
+  if (raw.length > 0) return raw;
+  return "친구";
+}
+
 const MAX_PER_FRIEND = 16;
 const MAX_MINE = 24;
 
@@ -155,13 +168,26 @@ export function FeedStreamProvider({ children }: { children: ReactNode }) {
   const [friendPublicByUid, setFriendPublicByUid] = useState<Map<string, PublicProfile>>(
     new Map(),
   );
+  /** 각 친구 uid 에 대해 공개 프로필 fetch 가 끝났는지(성공·실패) — 피드 게이트용 */
+  const [friendPublicReady, setFriendPublicReady] = useState<Record<string, boolean>>({});
   useEffect(() => {
     if (!friendShares?.length) {
       setFriendPublicByUid(new Map());
+      setFriendPublicReady({});
       return;
     }
-    let cancelled = false;
     const uids = [...new Set(friendShares.map((s) => s.ownerUid))];
+    let cancelled = false;
+
+    setFriendPublicReady((prev) => {
+      const allowed = new Set(uids);
+      const next: Record<string, boolean> = {};
+      for (const [k, v] of Object.entries(prev)) {
+        if (allowed.has(k) && v) next[k] = true;
+      }
+      return next;
+    });
+
     void (async () => {
       const pairs = await Promise.all(
         uids.map(async (uid) => {
@@ -175,14 +201,35 @@ export function FeedStreamProvider({ children }: { children: ReactNode }) {
       );
       if (cancelled) return;
       const next = new Map<string, PublicProfile>();
+      const ready: Record<string, boolean> = {};
       for (const [uid, p] of pairs) {
+        ready[uid] = true;
         if (p) next.set(uid, p);
       }
       setFriendPublicByUid(next);
+      setFriendPublicReady(ready);
     })();
+
     return () => {
       cancelled = true;
     };
+  }, [friendShares]);
+
+  /** 친구별 meals 구독 첫 스냅샷 수신 여부 — 없으면 내 글만 먼저 그려져 순서가 뒤집힘 */
+  const [friendMealFirstSnap, setFriendMealFirstSnap] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    if (!friendShares?.length) {
+      setFriendMealFirstSnap({});
+      return;
+    }
+    const allowed = new Set(friendShares.map((s) => s.ownerUid));
+    setFriendMealFirstSnap((prev) => {
+      const next: Record<string, boolean> = {};
+      for (const uid of allowed) {
+        if (prev[uid]) next[uid] = true;
+      }
+      return next;
+    });
   }, [friendShares]);
 
   const [friendMealsByOwner, setFriendMealsByOwner] = useState<Map<string, Meal[]>>(
@@ -206,6 +253,9 @@ export function FeedStreamProvider({ children }: { children: ReactNode }) {
             next.set(s.ownerUid, rows);
             return next;
           });
+          setFriendMealFirstSnap((prev) =>
+            prev[s.ownerUid] ? prev : { ...prev, [s.ownerUid]: true },
+          );
         },
         () => {
           setFriendMealsByOwner((prev) => {
@@ -213,6 +263,9 @@ export function FeedStreamProvider({ children }: { children: ReactNode }) {
             next.set(s.ownerUid, []);
             return next;
           });
+          setFriendMealFirstSnap((prev) =>
+            prev[s.ownerUid] ? prev : { ...prev, [s.ownerUid]: true },
+          );
         },
       );
       unsubs.push(unsub);
@@ -264,7 +317,6 @@ export function FeedStreamProvider({ children }: { children: ReactNode }) {
     for (const share of friendShares ?? []) {
       const rows = friendMealsByOwner.get(share.ownerUid) ?? [];
       const pub = friendPublicByUid.get(share.ownerUid);
-      const pubName = pub?.displayName?.trim();
       const pubPhoto = pub?.photoURL?.trim();
       const sharePhoto = share.ownerPhotoURL?.trim();
       for (const m of rows) {
@@ -273,7 +325,7 @@ export function FeedStreamProvider({ children }: { children: ReactNode }) {
         out.push({
           author: {
             uid: share.ownerUid,
-            name: pubName || share.ownerName,
+            name: feedFriendDisplayName(share, pub),
             photoURL: pubPhoto || sharePhoto || undefined,
           },
           meal: { ...m, items: pubItems },
@@ -326,11 +378,38 @@ export function FeedStreamProvider({ children }: { children: ReactNode }) {
     return () => window.clearTimeout(t);
   }, [emptyOutgoingAwaitingServer]);
 
-  /** 로그인 피드는 공유 목록 첫 스냅샷 전에 내 글만 그려져 순서가 뒤틀리므로 잠깐 대기 */
+  const hasFriendsToHydrate =
+    !!myUid && feedFirestoreLive && !!friendShares && friendShares.length > 0;
+
+  const friendsMealsSnapReady =
+    !hasFriendsToHydrate ||
+    friendShares!.every((s) => friendMealFirstSnap[s.ownerUid] === true);
+
+  const friendsPublicFetchReady =
+    !hasFriendsToHydrate ||
+    friendShares!.every((s) => friendPublicReady[s.ownerUid] === true);
+
+  const friendsGateSatisfied = friendsMealsSnapReady && friendsPublicFetchReady;
+
+  const [feedFriendsGateTimedOut, setFeedFriendsGateTimedOut] = useState(false);
+  useEffect(() => {
+    if (!hasFriendsToHydrate || friendsGateSatisfied) {
+      setFeedFriendsGateTimedOut(false);
+      return;
+    }
+    const t = window.setTimeout(() => setFeedFriendsGateTimedOut(true), FEED_FRIENDS_GATE_MS);
+    return () => clearTimeout(t);
+  }, [hasFriendsToHydrate, friendsGateSatisfied]);
+
+  const friendsGateBlocking =
+    hasFriendsToHydrate && !friendsGateSatisfied && !feedFriendsGateTimedOut;
+
+  /** 공유·친구 식단·닉네임이 갖춰진 뒤 한 번에 그려 순서·이름 깜빡임 완화 */
   const loading =
     authLoading ||
     myMeals === undefined ||
-    (!!myUid && feedFirestoreLive && friendShares === null);
+    (!!myUid && feedFirestoreLive && friendShares === null) ||
+    friendsGateBlocking;
   const ownSettled =
     !myUid ||
     !feedFirestoreLive ||
