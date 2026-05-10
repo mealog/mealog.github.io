@@ -1,4 +1,5 @@
 import Dexie from "dexie";
+import { isSamsungInternetBrowser } from "./filePickerCapabilities";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -9,6 +10,11 @@ function isAppleMobileUa(): boolean {
     typeof navigator !== "undefined" &&
     /iPhone|iPad|iPod/i.test(navigator.userAgent)
   );
+}
+
+/** iOS·삼성 인터넷 등 IndexedDB 가 자주 흔들리는 환경 */
+function needsExtraIndexedDbRetries(): boolean {
+  return isAppleMobileUa() || isSamsungInternetBrowser();
 }
 
 /**
@@ -64,8 +70,8 @@ async function doRecoverDexieConnection(dexieDb: Dexie): Promise<void> {
   } catch {
     /* noop */
   }
-  await sleep(isAppleMobileUa() ? 120 : 75);
-  const openDelaysMs = isAppleMobileUa()
+  await sleep(needsExtraIndexedDbRetries() ? 120 : 75);
+  const openDelaysMs = needsExtraIndexedDbRetries()
     ? [0, 90, 180, 340, 520, 850, 1300]
     : [0, 70, 160, 340];
   let lastErr: unknown;
@@ -135,9 +141,9 @@ export async function withIndexedDbRetry<T>(
   fn: () => Promise<T>,
   opts?: { retries?: number },
 ): Promise<T> {
-  const appleMobile = isAppleMobileUa();
-  const retries = opts?.retries ?? (appleMobile ? 14 : 5);
-  const delaysMs = appleMobile
+  const fragile = needsExtraIndexedDbRetries();
+  const retries = opts?.retries ?? (fragile ? 14 : 5);
+  const delaysMs = fragile
     ? [
         45, 100, 180, 280, 420, 650, 900, 1200, 1500, 1900, 2300, 2800, 3300,
         4000,
@@ -147,15 +153,15 @@ export async function withIndexedDbRetry<T>(
   let lastErr: unknown;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      if (appleMobile && attempt === 0) {
+      if (fragile && attempt === 0) {
         await sleep(25);
       }
       return await fn();
     } catch (e) {
       lastErr = e;
       if (attempt === retries || !isTransientIndexedDbError(e)) throw e;
-      /** iOS 는 첫 실패 직후부터 네이티브 연결 재수립이 안전하다. 데스크톱은 노이즈 줄이려 2번째부터 */
-      const recoverFrom = appleMobile ? 0 : 2;
+      /** iOS·삼성 인터넷 은 첫 실패 직후부터 재연결이 안전하다. 데스크톱은 노이즈 줄이려 2번째부터 */
+      const recoverFrom = fragile ? 0 : 2;
       if (attempt >= recoverFrom) await recoverDexieConnection(dexieDb);
       await sleep(delaysMs[Math.min(attempt, delaysMs.length - 1)] ?? 150);
     }
@@ -173,11 +179,12 @@ export async function warmupIndexedDb(dexieDb: Dexie): Promise<void> {
     /* noop */
   }
   try {
-    const ios =
+    const fragile =
       typeof navigator !== "undefined" &&
-      /iPhone|iPad|iPod/i.test(navigator.userAgent);
+      (/iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+        isSamsungInternetBrowser());
     await withIndexedDbRetry(dexieDb, () => dexieDb.open(), {
-      retries: ios ? 14 : 8,
+      retries: fragile ? 14 : 8,
     });
   } catch (e) {
     console.warn("[idb] warmup 실패", e);

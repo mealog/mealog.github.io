@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ChevronDown,
   ChevronUp,
@@ -12,6 +12,7 @@ import { HEALTH_TYPE_LABELS, type HealthRecord } from "../types";
 import HealthPhotoViewport from "./HealthPhotoViewport";
 import { useBlobImgSrc } from "../hooks/useBlobImgSrc";
 import { isRenderableImageBlob } from "../lib/image";
+import { getDownloadUrlForStoragePath } from "../lib/userMediaStorage";
 import { formatKoDate } from "../lib/utils";
 
 interface Props {
@@ -33,20 +34,45 @@ export default function HealthRecordCard({
 }: Props) {
   const [open, setOpen] = useState(false);
   const photoBlob = record.photo ?? record.thumbnail;
-  const hasPhoto = isRenderableImageBlob(photoBlob);
+  const hasBlobPhoto = isRenderableImageBlob(photoBlob);
+  const storagePath = record.thumbStoragePath || record.photoStoragePath;
+  const [pathUrl, setPathUrl] = useState<string | undefined>();
   const { src: photoSrc, pending: photoSrcPending, onImgError: onPhotoImgError } =
     useBlobImgSrc(photoBlob);
+
+  useEffect(() => {
+    if (!storagePath || hasBlobPhoto) {
+      setPathUrl(undefined);
+      return;
+    }
+    let cancelled = false;
+    void getDownloadUrlForStoragePath(storagePath)
+      .then((u) => {
+        if (!cancelled) setPathUrl(u);
+      })
+      .catch(() => {
+        if (!cancelled) setPathUrl(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [storagePath, record.id, hasBlobPhoto]);
+
+  const hasPhotoArea = hasBlobPhoto || !!storagePath;
+  const displaySrc = photoSrc || pathUrl;
+  const thumbPending =
+    hasPhotoArea && !displaySrc && (photoSrcPending || !!storagePath);
 
   return (
     <div className="card overflow-hidden">
       <div className="flex w-full items-stretch gap-3 p-3">
-        {hasPhoto ? (
-          photoSrcPending && !photoSrc ? (
+        {hasPhotoArea ? (
+          thumbPending ? (
             <div
               className="h-14 w-14 shrink-0 animate-pulse self-start rounded-xl bg-slate-700"
               aria-hidden
             />
-          ) : photoSrc ? (
+          ) : displaySrc ? (
             <button
               type="button"
               onClick={() => setOpen((v) => !v)}
@@ -54,12 +80,12 @@ export default function HealthRecordCard({
               aria-label={open ? "기록 접기" : "기록 펼치기"}
             >
               <img
-                src={photoSrc}
+                src={displaySrc}
                 alt=""
                 loading="lazy"
                 decoding="async"
                 className="h-14 w-14 rounded-xl object-cover"
-                onError={onPhotoImgError}
+                onError={pathUrl && displaySrc === pathUrl ? () => setPathUrl(undefined) : onPhotoImgError}
               />
             </button>
           ) : (
@@ -97,13 +123,13 @@ export default function HealthRecordCard({
 
       {open && (
         <div className="space-y-3 border-t border-slate-800 p-4">
-          {hasPhoto &&
-            (photoSrcPending && !photoSrc ? (
+          {hasPhotoArea &&
+            (thumbPending ? (
               <div className="flex h-[260px] items-center justify-center rounded-xl bg-slate-800/50">
                 <Loader2 size={28} className="animate-spin text-brand-400" aria-hidden />
               </div>
-            ) : photoSrc ? (
-              <HealthPhotoViewport src={photoSrc} />
+            ) : displaySrc ? (
+              <HealthPhotoViewport src={displaySrc} />
             ) : null)}
           {record.analysisStatus === "analyzing" && (
             <div className="flex items-center gap-2 rounded-xl bg-slate-800/50 px-3 py-2 text-sm text-slate-300">

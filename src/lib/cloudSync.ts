@@ -168,10 +168,12 @@ async function blobsFromFirestorePhotoBase64(
   }
 }
 
-/** 동기화는 전부 Blob 로 풀고, 피드용 실시간 구독만 Storage 요청을 나중으로 미룸 */
+/** 동기화 pull 시 true 면 Storage getBlob 을 생략하고 경로만 둔다(삼성 브라우저 등 동기화 완료·UI 응답 개선). */
 export type StoredToMealOptions = {
   deferStorageBlobs?: boolean;
 };
+
+const PULL_DEFER_STORAGE: StoredToMealOptions = { deferStorageBlobs: true };
 
 async function itemStoredToItem(
   s: MealItemStored,
@@ -304,7 +306,10 @@ export async function storedToMeal(
   };
 }
 
-export async function storedToHealth(s: HealthStored): Promise<HealthRecord> {
+export async function storedToHealth(
+  s: HealthStored,
+  opts?: { deferStorageBlobs?: boolean },
+): Promise<HealthRecord> {
   const {
     photoPath: _p,
     thumbnailPath: _t,
@@ -315,6 +320,15 @@ export async function storedToHealth(s: HealthStored): Promise<HealthRecord> {
     ...rest
   } = s;
   const rec: HealthRecord = { ...rest };
+
+  if (
+    opts?.deferStorageBlobs &&
+    (photoStoragePath || thumbStoragePath)
+  ) {
+    if (photoStoragePath) rec.photoStoragePath = photoStoragePath;
+    if (thumbStoragePath) rec.thumbStoragePath = thumbStoragePath;
+    return rec;
+  }
 
   if (photoStoragePath || thumbStoragePath) {
     try {
@@ -379,7 +393,13 @@ async function mergeMealItemPhotoFromLocal(remoteItem: MealItem, loc?: MealItem)
   if (photo && photo.size > 0 && !(thumbnail?.size)) {
     thumbnail = await makeThumbnail(photo);
   }
-  return { ...remoteItem, photo, thumbnail };
+  return {
+    ...remoteItem,
+    photo,
+    thumbnail,
+    photoStoragePath: loc.photoStoragePath ?? remoteItem.photoStoragePath,
+    thumbStoragePath: loc.thumbStoragePath ?? remoteItem.thumbStoragePath,
+  };
 }
 
 /**
@@ -421,7 +441,7 @@ async function mergeMeals(local: Meal[], remote: MealStored[]): Promise<Meal[]> 
   for (const id of ids) {
     const l = lMap.get(id);
     const r = rMap.get(id);
-    if (!l) out.push(await storedToMeal(r!));
+    if (!l) out.push(await storedToMeal(r!, PULL_DEFER_STORAGE));
     else if (!r) out.push(l);
     else if (l.updatedAt >= r.updatedAt) {
       /**
@@ -431,16 +451,24 @@ async function mergeMeals(local: Meal[], remote: MealStored[]): Promise<Meal[]> 
       const needsRemotePhotos = l.items.some((it) => !itemHasRenderableImage(it));
       out.push(
         needsRemotePhotos
-          ? await hydrateMealPhotosFromLocal(l, await storedToMeal(r!))
+          ? await hydrateMealPhotosFromLocal(l, await storedToMeal(r!, PULL_DEFER_STORAGE))
           : l,
       );
-    } else out.push(await hydrateMealPhotosFromLocal(await storedToMeal(r), l));
+    } else {
+      out.push(
+        await hydrateMealPhotosFromLocal(await storedToMeal(r, PULL_DEFER_STORAGE), l),
+      );
+    }
   }
   return out;
 }
 
 function healthHasRenderableImage(h: HealthRecord): boolean {
-  return (h.photo?.size ?? 0) > 0 || (h.thumbnail?.size ?? 0) > 0;
+  return (
+    (h.photo?.size ?? 0) > 0 ||
+    (h.thumbnail?.size ?? 0) > 0 ||
+    !!(h.photoStoragePath || h.thumbStoragePath)
+  );
 }
 
 async function mergeHealthPhotosFromLocal(remote: HealthRecord, loc?: HealthRecord): Promise<HealthRecord> {
@@ -451,8 +479,16 @@ async function mergeHealthPhotosFromLocal(remote: HealthRecord, loc?: HealthReco
   if (photo && photo.size > 0 && !(thumbnail?.size)) {
     thumbnail = await makeThumbnail(photo);
   }
-  return { ...remote, photo, thumbnail };
+  return {
+    ...remote,
+    photo,
+    thumbnail,
+    photoStoragePath: loc.photoStoragePath ?? remote.photoStoragePath,
+    thumbStoragePath: loc.thumbStoragePath ?? remote.thumbStoragePath,
+  };
 }
+
+const PULL_DEFER_HEALTH = { deferStorageBlobs: true as const };
 
 async function mergeHealth(local: HealthRecord[], remote: HealthStored[]): Promise<HealthRecord[]> {
   const rMap = new Map(remote.map((x) => [x.id, x]));
@@ -462,16 +498,20 @@ async function mergeHealth(local: HealthRecord[], remote: HealthStored[]): Promi
   for (const id of ids) {
     const l = lMap.get(id);
     const r = rMap.get(id);
-    if (!l) out.push(await storedToHealth(r!));
+    if (!l) out.push(await storedToHealth(r!, PULL_DEFER_HEALTH));
     else if (!r) out.push(l);
     else if (l.updatedAt >= r.updatedAt) {
       const needsRemotePhoto = !healthHasRenderableImage(l);
       out.push(
         needsRemotePhoto
-          ? await mergeHealthPhotosFromLocal(l, await storedToHealth(r!))
+          ? await mergeHealthPhotosFromLocal(l, await storedToHealth(r!, PULL_DEFER_HEALTH))
           : l,
       );
-    } else out.push(await mergeHealthPhotosFromLocal(await storedToHealth(r), l));
+    } else {
+      out.push(
+        await mergeHealthPhotosFromLocal(await storedToHealth(r, PULL_DEFER_HEALTH), l),
+      );
+    }
   }
   return out;
 }
@@ -696,7 +736,16 @@ async function mealToStored(m: Meal, ownerFirebaseUid: string): Promise<MealStor
     const meta = toItemMeta(it);
     const source = it.photo?.size ? it.photo : it.thumbnail?.size ? it.thumbnail : null;
     if (!source) {
-      stored.push(meta);
+      if (it.photoStoragePath || it.thumbStoragePath) {
+        stored.push({
+          ...meta,
+          photoStoragePath: it.photoStoragePath,
+          thumbStoragePath: it.thumbStoragePath,
+          photoMimeType: "image/jpeg",
+        });
+      } else {
+        stored.push(meta);
+      }
       continue;
     }
     const fullJpeg = await compressImage(source, {

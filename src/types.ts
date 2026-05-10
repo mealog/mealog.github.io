@@ -146,6 +146,9 @@ export interface HealthRecord {
   recordDate: string;
   photo?: Blob;
   thumbnail?: Blob;
+  /** 동기화 직후 Blob 대신 경로만 둘 때 — 화면에서 Storage URL 로 로드 */
+  photoStoragePath?: string;
+  thumbStoragePath?: string;
   /** OCR/AI 가 추출한 원문 */
   extractedText?: string;
   /** 구조화된 측정값 */
