@@ -23,7 +23,7 @@ import { useAuth } from "./AuthContext";
 import { usePrimaryUserId } from "../hooks/usePrimaryUserId";
 import { resolveDisplayName, resolveDisplayPhotoURL } from "../lib/identity";
 
-const MAX_PER_FRIEND = 10;
+const MAX_PER_FRIEND = 16;
 const MAX_MINE = 24;
 
 export interface FeedAuthor {

@@ -31,8 +31,8 @@ import { STALL_REFRESH_HINT } from "../lib/tabLoadingMessage";
  * MealSocialBlock 은 카드가 뷰포트 근처에 올 때만 구독합니다.
  */
 const FEED_INITIAL_VISIBLE = 1;
-/** 스크롤·스와이프 한 번에 추가로 펼칠 카드 수 */
-const FEED_LOAD_STEP = 1;
+/** 스크롤 후 센티널·교차 시 한 번에 펼칠 카드 수 — 1장씩이면 체감이 느려져 묶음 로드 */
+const FEED_LOAD_CHUNK = 5;
 
 export default function FeedPage() {
   const { user, firebaseReady, loading: authLoading } = useAuth();
@@ -60,6 +60,8 @@ export default function FeedPage() {
   entriesLenRef.current = entries.length;
 
   const [visibleCount, setVisibleCount] = useState(FEED_INITIAL_VISIBLE);
+  const visibleCountRef = useRef(visibleCount);
+  visibleCountRef.current = visibleCount;
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   /** 사용자가 한 번이라도 스크롤/휠한 뒤에만 «다음 장» 로드 — 초기에 센티널이 보여도 1장만 유지 */
   const feedScrollEngagedRef = useRef(false);
@@ -105,7 +107,7 @@ export default function FeedPage() {
   const loadMoreHintVisible =
     streamReady && entries.length > 0 && visibleCount < entries.length;
 
-  /** 스크롤·휠·터치 후에만 다음 카드 로드(IO는 교차 «진입» 시 1장만) */
+  /** 스크롤·휠·터치 후에만 다음 카드 로드(IO 교차 + 스크롤 보조) */
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el || visibleCount >= entries.length) return;
@@ -127,7 +129,7 @@ export default function FeedPage() {
         const len = entriesLenRef.current;
         setVisibleCount((prev) => {
           if (prev >= len) return prev;
-          return Math.min(prev + FEED_LOAD_STEP, len);
+          return Math.min(prev + FEED_LOAD_CHUNK, len);
         });
         feedIoWasIntersectingRef.current = true;
       });
@@ -138,14 +140,14 @@ export default function FeedPage() {
       const len = entriesLenRef.current;
       setVisibleCount((prev) => {
         if (prev >= len) return prev;
-        return Math.min(prev + FEED_LOAD_STEP, len);
+        return Math.min(prev + FEED_LOAD_CHUNK, len);
       });
     };
 
-    /** IntersectionObserver: 센티널이 뷰포트에 들어올 때(가장자리)만 한 장 */
+    /** IntersectionObserver: 센티널이 뷰포트에 들어올 때(가장자리) 묶음 로드 */
     const opts: IntersectionObserverInit = {
       root: null,
-      rootMargin: "420px 0px",
+      rootMargin: "900px 0px",
       threshold: 0,
     };
 
@@ -162,10 +164,30 @@ export default function FeedPage() {
     );
     obs.observe(el);
 
+    /** 센티널이 계속 보이면 IO 가 재발하지 않아 멈추는 경우 보충(스로틀) */
+    let lastScrollFill = 0;
+    const SCROLL_FILL_MS = 340;
+    const onScrollFill = () => {
+      if (!alive || !feedScrollEngagedRef.current) return;
+      if (visibleCountRef.current >= entriesLenRef.current) return;
+      const now = Date.now();
+      if (now - lastScrollFill < SCROLL_FILL_MS) return;
+      const t = sentinelRef.current;
+      if (!t) return;
+      const r = t.getBoundingClientRect();
+      const vh = window.innerHeight;
+      if (!(vh > 0 && r.bottom > 0 && r.top < vh)) return;
+      lastScrollFill = now;
+      tryLoadOneMore();
+    };
+
     window.addEventListener("scroll", engage, { passive: true });
     window.addEventListener("wheel", engage, { passive: true });
     window.addEventListener("touchmove", engage, { passive: true });
     main?.addEventListener("scroll", engage, { passive: true });
+
+    window.addEventListener("scroll", onScrollFill, { passive: true });
+    main?.addEventListener("scroll", onScrollFill, { passive: true });
 
     return () => {
       alive = false;
@@ -173,9 +195,11 @@ export default function FeedPage() {
       window.removeEventListener("wheel", engage);
       window.removeEventListener("touchmove", engage);
       main?.removeEventListener("scroll", engage);
+      window.removeEventListener("scroll", onScrollFill);
+      main?.removeEventListener("scroll", onScrollFill);
       obs.disconnect();
     };
-  }, [visibleCount, entries.length]);
+  }, [entries.length, visibleCount]);
 
   return (
     <div className="flex flex-col gap-4 px-4 pt-5">

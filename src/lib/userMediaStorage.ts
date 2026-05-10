@@ -109,6 +109,24 @@ export async function blobFromStoragePath(storagePathOrUrl: string): Promise<Blo
   try {
     return await fetchPath(path);
   } catch (e) {
+    /** Firestore 에는 users/ 접두 없이 `{uid}/media/meals/...` 만 저장된 경우 */
+    const withoutUsersPrefix = /^([^/]{15,})\/(media\/.+)$/.exec(path);
+    if (withoutUsersPrefix && !path.startsWith("users/")) {
+      try {
+        return await fetchPath(`users/${withoutUsersPrefix[1]}/${withoutUsersPrefix[2]}`);
+      } catch {
+        /* 다음 폴백 */
+      }
+    }
+    /** 반대로 문서에는 users/ 가 있는데 객체가 접두 없이만 있을 때 */
+    const stripUsers = /^users\/([^/]+)\/(media\/.+)$/.exec(path);
+    if (stripUsers) {
+      try {
+        return await fetchPath(`${stripUsers[1]}/${stripUsers[2]}`);
+      } catch {
+        /* 다음 폴백 */
+      }
+    }
     const authUid = getFirebaseAuth().currentUser?.uid;
     const match = /^users\/([^/]+)\/(.+)$/.exec(path);
     /**
