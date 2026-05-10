@@ -10,18 +10,6 @@ service cloud.firestore {
     // shares/{ownerUid}_{viewerUid} : owner 가 viewer 에게 공개하는 범위.
     // 한 방향 = 한 문서. 맞팔이면 두 문서(서로 owner/viewer 뒤집힘)가 존재한다.
 
-    function shareData(ownerUid) {
-      return get(/databases/$(database)/documents/shares/$(ownerUid + '_' + me())).data;
-    }
-
-    function isViewerWithScope(ownerUid, scope) {
-      let s = shareData(ownerUid);
-      return s != null
-        && s.ownerUid == ownerUid
-        && s.viewerUid == me()
-        && s.scope[scope] == true;
-    }
-
     /** calendar 가 명시적으로 bool false 일 때만 차단 — 클라이언트 `scope.calendar !== false` 와 동일 */
     function calendarShareAllows(scope) {
       return scope == null
@@ -43,9 +31,21 @@ service cloud.firestore {
       return calendarShareToward(a, b) || calendarShareToward(b, a);
     }
 
+    /** 내(me)가 owner 의 식단·좋아요·댓글을 볼 수 있는지 — 레거시 shares 에 scope 필드 없음 허용 */
+    function viewerMayReadOwnerCalendar(ownerUid) {
+      let p = /databases/$(database)/documents/shares/$(ownerUid + '_' + me());
+      return exists(p)
+        && get(p).data.ownerUid == ownerUid
+        && get(p).data.viewerUid == me()
+        && (
+          !('scope' in get(p).data)
+          || calendarShareAllows(get(p).data.scope)
+        );
+    }
+
     // ----- 본인 UID 하위 — 소유자는 전부, viewer 는 허용 범위만 read -----
     match /users/{userId}/meals/{docId} {
-      allow read:  if signedIn() && (me() == userId || isViewerWithScope(userId, 'calendar'));
+      allow read:  if signedIn() && (me() == userId || viewerMayReadOwnerCalendar(userId));
       allow write: if signedIn() && me() == userId;
     }
     match /users/{userId}/health/{docId} {
@@ -59,10 +59,10 @@ service cloud.firestore {
     // 본인 좋아요만 create/delete (문서 id == 본인 uid 강제).
     match /users/{ownerUid}/meals/{mealId}/likes/{viewerUid} {
       allow read: if signedIn()
-        && (me() == ownerUid || isViewerWithScope(ownerUid, 'calendar'));
+        && (me() == ownerUid || viewerMayReadOwnerCalendar(ownerUid));
       allow create, delete: if signedIn()
         && me() == viewerUid
-        && (me() == ownerUid || isViewerWithScope(ownerUid, 'calendar'));
+        && (me() == ownerUid || viewerMayReadOwnerCalendar(ownerUid));
     }
 
     // 식단 댓글 — 식단을 볼 수 있는 사람만 read/create.
@@ -70,9 +70,9 @@ service cloud.firestore {
     // parentCommentId (대댓글용) 필드는 선택이며 create 시 값이 오면 1단계 깊이만 허용한다.
     match /users/{ownerUid}/meals/{mealId}/comments/{cid} {
       allow read: if signedIn()
-        && (me() == ownerUid || isViewerWithScope(ownerUid, 'calendar'));
+        && (me() == ownerUid || viewerMayReadOwnerCalendar(ownerUid));
       allow create: if signedIn()
-        && (me() == ownerUid || isViewerWithScope(ownerUid, 'calendar'))
+        && (me() == ownerUid || viewerMayReadOwnerCalendar(ownerUid))
         && request.resource.data.authorUid == me()
         && request.resource.data.ownerUid == ownerUid
         && request.resource.data.mealId == mealId;
@@ -90,10 +90,10 @@ service cloud.firestore {
     // 한 사람당 한 문서 (id == viewerUid) 로 unique.
     match /users/{ownerUid}/meals/{mealId}/comments/{cid}/likes/{viewerUid} {
       allow read: if signedIn()
-        && (me() == ownerUid || isViewerWithScope(ownerUid, 'calendar'));
+        && (me() == ownerUid || viewerMayReadOwnerCalendar(ownerUid));
       allow create, delete: if signedIn()
         && me() == viewerUid
-        && (me() == ownerUid || isViewerWithScope(ownerUid, 'calendar'));
+        && (me() == ownerUid || viewerMayReadOwnerCalendar(ownerUid));
     }
 
     // 활동 알림함 — 수신자만 read/update; create 는 본인 검증 + 서로 달력 공유 친구 관계일 때만 허용.

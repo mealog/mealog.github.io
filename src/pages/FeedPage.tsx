@@ -85,7 +85,6 @@ export default function FeedPage() {
     entries.length <= visibleCount ? entries : entries.slice(0, visibleCount);
   const [emptyHintReady, setEmptyHintReady] = useState(false);
   const [friendPromptReady, setFriendPromptReady] = useState(false);
-  const [loadMoreHintReady, setLoadMoreHintReady] = useState(false);
   useEffect(() => {
     if (!streamReady || !settled || entries.length > 0) {
       setEmptyHintReady(false);
@@ -102,14 +101,9 @@ export default function FeedPage() {
     const t = window.setTimeout(() => setFriendPromptReady(true), 700);
     return () => window.clearTimeout(t);
   }, [streamReady, settled, hasFriends]);
-  useEffect(() => {
-    if (!streamReady || entries.length === 0 || visibleCount >= entries.length) {
-      setLoadMoreHintReady(false);
-      return;
-    }
-    const t = window.setTimeout(() => setLoadMoreHintReady(true), 480);
-    return () => window.clearTimeout(t);
-  }, [streamReady, entries.length, visibleCount]);
+  /** 더 불러올 카드가 있을 때만 표시 — 지연 없음(스크롤로 바로 채워지면 거의 안 보임) */
+  const loadMoreHintVisible =
+    streamReady && entries.length > 0 && visibleCount < entries.length;
 
   /** 스크롤·휠·터치 후에만 다음 카드 로드(IO는 교차 «진입» 시 1장만) */
   useEffect(() => {
@@ -151,7 +145,7 @@ export default function FeedPage() {
     /** IntersectionObserver: 센티널이 뷰포트에 들어올 때(가장자리)만 한 장 */
     const opts: IntersectionObserverInit = {
       root: null,
-      rootMargin: "120px 0px",
+      rootMargin: "420px 0px",
       threshold: 0,
     };
 
@@ -288,7 +282,7 @@ export default function FeedPage() {
                 className="flex flex-col items-center gap-1 py-5 text-center"
                 aria-hidden
               >
-                {loadMoreHintReady && (
+                {loadMoreHintVisible && (
                   <span className="text-[11px] text-slate-500">아래로 스크롤하면 더 보여요</span>
                 )}
               </div>

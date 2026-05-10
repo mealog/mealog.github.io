@@ -178,7 +178,7 @@ export async function getFriendConnection(peerUid: string): Promise<{
   const canViewFriendCalendar = !!(
     incOk &&
     incoming &&
-    incoming.scope?.calendar === true
+    incoming.scope?.calendar !== false
   );
 
   return {

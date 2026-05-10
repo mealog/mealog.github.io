@@ -120,7 +120,8 @@ export function FeedStreamProvider({ children }: { children: ReactNode }) {
     }
     const unsub = subscribeOutgoingShares(
       (rows, meta) => {
-        const filtered = rows.filter((s) => s.scope?.calendar === true);
+        /** 명시적으로 calendar:false 만 제외 — 레거시 shares(scope 없음)도 피드·구독에 포함 */
+        const filtered = rows.filter((s) => s.scope?.calendar !== false);
         setFriendShares(filtered);
         setOutgoingSharesFromCache(rows.length === 0 ? meta.fromCache : false);
       },

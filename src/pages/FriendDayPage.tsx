@@ -63,7 +63,7 @@ export default function FriendDayPage() {
 
   const canCalendar = useMemo(() => {
     if (!share || share === "missing") return false;
-    return !!share.scope.calendar;
+    return share.scope?.calendar !== false;
   }, [share]);
 
   useEffect(() => {

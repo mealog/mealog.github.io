@@ -10,15 +10,21 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    /** Firestore calendarShareAllows 와 동일 — scope 없음·calendar 미표기 허용, calendar 명시 false 만 차단 */
     function viewerShareCalendarOk(ownerUid) {
       let shareId = ownerUid + '_' + request.auth.uid;
       let p = /databases/(default)/documents/shares/$(shareId);
+      let d = firestore.get(p).data;
       return signedIn()
         && firestore.exists(p)
-        && firestore.get(p).data.ownerUid == ownerUid
-        && firestore.get(p).data.viewerUid == request.auth.uid
-        && 'scope' in firestore.get(p).data
-        && firestore.get(p).data.scope.calendar == true;
+        && d.ownerUid == ownerUid
+        && d.viewerUid == request.auth.uid
+        && (
+          !('scope' in d)
+          || !(d.scope is map)
+          || !('calendar' in d.scope)
+          || !(d.scope.calendar is bool && d.scope.calendar == false)
+        );
     }
 
     match /users/{ownerUid}/media/meals/{path=**} {
