@@ -27,15 +27,17 @@ import { prefetchDownloadUrlsForStoragePaths } from "../lib/userMediaStorage";
 
 /**
  * 피드 탭 — 스트림은 App 의 FeedStreamProvider 에서 구독하고, 여기서는 렌더링만 합니다.
- * 첫 화면 1장만 두고, 사용자가 아래로 스크롤해 센티널이 들어올 때마다 1장씩 연다.
- * (큰 화면에서 센티널이 처음부터 보이면 자동으로 여러 장 열리지 않게 스크롤 후에만 로드)
+ * 첫 화면 1장만 두고, 스크롤할 때마다 피드 카드를 1장씩 연다.
+ * (큰 화면에서 센티널이 처음부터 보여도 스크롤 전에는 1장만 유지)
  * MealSocialBlock 은 카드가 뷰포트 근처에 올 때만 구독합니다.
  */
 const FEED_INITIAL_VISIBLE = 1;
-/** 스크롤 후 센티널·교차 시 한 번에 펼칠 카드 수 — 1장씩이면 체감이 느려져 묶음 로드 */
-const FEED_LOAD_CHUNK = 5;
-/** 피드 상단 N개 카드는 Storage 썸네일을 IO 대기 없이 바로 요청해 회색 로딩을 줄임 */
-const FEED_EAGER_IMAGE_CARDS = 24;
+/** 센티널 교차·스크롤 보충 시 한 번에 추가하는 카드 수 */
+const FEED_LOAD_CHUNK = 1;
+/** 보이는 카드 + 바로 다음 몇 장까지 썸네일 URL 선요청 */
+const FEED_PREFETCH_AHEAD = 2;
+/** 피드 상단 N개 카드는 Storage 썸네일을 IO 대기 없이 바로 요청 */
+const FEED_EAGER_IMAGE_CARDS = 6;
 
 export default function FeedPage() {
   const { user, firebaseReady, loading: authLoading } = useAuth();
@@ -52,19 +54,6 @@ export default function FeedPage() {
 
   const markWatermark = fs?.markFeedWatermark;
   useEffect(() => () => void markWatermark?.(), [markWatermark]);
-
-  /** 상단 피드 썸네일 URL 선요청 — 캐시에 넣어 두면 카드 마운트 시 바로 표시 */
-  useEffect(() => {
-    if (!streamReady || !settled || entries.length === 0) return;
-    const paths: string[] = [];
-    for (const e of entries.slice(0, 28)) {
-      for (const it of (e.meal.items ?? []).slice(0, 2)) {
-        const p = it.thumbStoragePath || it.photoStoragePath;
-        if (p) paths.push(p);
-      }
-    }
-    prefetchDownloadUrlsForStoragePaths(paths, 48);
-  }, [streamReady, settled, entries]);
 
   const hasFriends = useMemo(() => {
     const set = new Set<string>();
@@ -101,6 +90,21 @@ export default function FeedPage() {
 
   const visibleEntries =
     entries.length <= visibleCount ? entries : entries.slice(0, visibleCount);
+
+  /** 현재까지 연 카드 + 앞으로 1~2장 분량만 선요청 (한 장씩 열 때 네트워크 낭비 줄임) */
+  useEffect(() => {
+    if (!streamReady || !settled || entries.length === 0) return;
+    const cap = Math.min(visibleCount + FEED_PREFETCH_AHEAD, entries.length);
+    const paths: string[] = [];
+    for (const e of entries.slice(0, cap)) {
+      for (const it of (e.meal.items ?? []).slice(0, 2)) {
+        const p = it.thumbStoragePath || it.photoStoragePath;
+        if (p) paths.push(p);
+      }
+    }
+    prefetchDownloadUrlsForStoragePaths(paths, 24);
+  }, [streamReady, settled, entries, visibleCount]);
+
   const [emptyHintReady, setEmptyHintReady] = useState(false);
   const [friendPromptReady, setFriendPromptReady] = useState(false);
   useEffect(() => {
@@ -160,7 +164,7 @@ export default function FeedPage() {
       });
     };
 
-    /** IntersectionObserver: 센티널이 뷰포트에 들어올 때(가장자리) 묶음 로드 */
+    /** IntersectionObserver: 센티널이 뷰포트에 들어올 때 한 장 추가 */
     const opts: IntersectionObserverInit = {
       root: null,
       rootMargin: "900px 0px",
