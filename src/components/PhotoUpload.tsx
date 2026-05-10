@@ -106,12 +106,7 @@ export default function PhotoUpload({
   const [editorQueue, setEditorQueue] = useState<File[]>([]);
 
   const useEditor = squareCropEditor === true;
-  /** 피드·저장 용량 절감: 기본은 1024px·품질 0.72 (필요 시 compressOptions 로 덮어쓰기) */
-  const maxDim = compressOptions?.maxDimension ?? 1024;
-  const mainQuality = compressOptions?.quality ?? 0.72;
-  /** 건강기록 등 고해상도 옵션일 때 목록 썸네일만 조금 여유 있게 */
-  const thumbMaxDim = maxDim > 1600 ? 320 : 256;
-  const thumbQuality = maxDim > 1600 ? 0.62 : 0.58;
+  const maxDim = compressOptions?.maxDimension ?? 1280;
   const squareCropExportSidePx = Math.min(
     2048,
     Math.max(960, squareCropExportSidePxProp ?? Math.min(Math.max(maxDim, 960), 2048)),
@@ -129,14 +124,14 @@ export default function PhotoUpload({
           await new Promise<void>((r) => setTimeout(r, 160 * attempt));
         }
         const compressed = await compressImage(squareJpegBlob, {
-          maxDimension: maxDim,
-          quality: mainQuality,
+          maxDimension: 1280,
+          quality: 0.85,
           square: false,
           ...compressOptions,
         });
         const thumb = await compressImage(compressed, {
-          maxDimension: thumbMaxDim,
-          quality: thumbQuality,
+          maxDimension: 320,
+          quality: 0.7,
           square: false,
         });
         await onPicked(compressed, thumb);
@@ -155,14 +150,14 @@ export default function PhotoUpload({
       throw new Error("사진이 아직 준비되지 않았거나 빈 파일입니다. 잠시 후 다시 선택해 주세요.");
     }
     const compressed = await compressImage(usable, {
-      maxDimension: maxDim,
-      quality: mainQuality,
+      maxDimension: 1280,
+      quality: 0.85,
       square: useEditor ? false : square,
       ...compressOptions,
     });
     const thumb = await compressImage(compressed, {
-      maxDimension: thumbMaxDim,
-      quality: thumbQuality,
+      maxDimension: 320,
+      quality: 0.7,
       square: useEditor ? false : square,
     });
     await onPicked(compressed, thumb);

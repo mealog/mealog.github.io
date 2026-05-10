@@ -749,13 +749,13 @@ async function mealToStored(m: Meal, ownerFirebaseUid: string): Promise<MealStor
       continue;
     }
     const fullJpeg = await compressImage(source, {
-      maxDimension: 900,
-      quality: 0.64,
+      maxDimension: 960,
+      quality: 0.72,
       mimeType: "image/jpeg",
     });
     const thumbJpeg = await compressImage(fullJpeg.size ? fullJpeg : source, {
-      maxDimension: 400,
-      quality: 0.52,
+      maxDimension: 480,
+      quality: 0.58,
       mimeType: "image/jpeg",
     });
     const { photoStoragePath, thumbStoragePath } = await uploadMealItemImages(
