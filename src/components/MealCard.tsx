@@ -27,6 +27,9 @@ import type { MealItemPatch } from "../lib/mealItems";
 import { userFacingStorageErrorMessage } from "../lib/idbRetry";
 export type { MealItemPatch } from "../lib/mealItems";
 
+/** Storage URL 수신·`<img>` 디코딩 전 빈 화면 대신 PWA 아이콘(먹로그 로고) */
+const APP_LOGO_PLACEHOLDER_SRC = `${import.meta.env.BASE_URL}pwa-192.png`;
+
 /**
  * 끼니 안의 한 "음식 항목" 카드.
  *
@@ -74,6 +77,23 @@ export function MealItemCard({
   const { src: photoSrc, pending: photoSrcPending, onImgError: onPhotoImgError, wrapRef } =
     useMealItemCardImageSrc(item, { eagerImage: eagerFeedImage });
 
+  const [mealImgShown, setMealImgShown] = useState(false);
+  const mealImgRef = useRef<HTMLImageElement>(null);
+
+  useEffect(() => {
+    setMealImgShown(false);
+  }, [item.id, photoSrc]);
+
+  useEffect(() => {
+    if (!photoSrc) return;
+    const el = mealImgRef.current;
+    if (el?.complete && el.naturalHeight > 0) setMealImgShown(true);
+  }, [photoSrc, item.id]);
+
+  const showMealLogoUnderlay =
+    hasPhoto &&
+    ((photoSrcPending && !photoSrc) || (!!photoSrc && !mealImgShown));
+
   return (
     <div className="space-y-2 rounded-2xl border border-slate-800 bg-slate-900/30 p-2">
       <div
@@ -82,35 +102,59 @@ export function MealItemCard({
         }}
         className="space-y-2"
       >
-      <div ref={wrapRef} className="relative overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
+      <div
+        ref={wrapRef}
+        className="relative aspect-square w-full overflow-hidden rounded-xl border border-slate-800 bg-slate-900"
+      >
         {hasPhoto ? (
-          photoSrcPending && !photoSrc ? (
-            <div
-              className={cls(
-                "flex aspect-square w-full items-center justify-center",
-                quietPhotoLoading ? "bg-slate-800/50" : "bg-slate-800/80",
-              )}
-              aria-busy
-            >
-              {!quietPhotoLoading && (
-                <Loader2 className="h-8 w-8 shrink-0 animate-spin text-slate-500" aria-hidden />
-              )}
-            </div>
-          ) : photoSrc ? (
-            <img
-              src={photoSrc}
-              alt="식사 사진"
-              loading={eagerFeedImage ? "eager" : "lazy"}
-              fetchPriority={eagerFeedImage ? "high" : "auto"}
-              decoding="async"
-              className="aspect-square w-full object-cover"
-              onError={onPhotoImgError}
-            />
-          ) : (
-            <div className="flex aspect-square w-full items-center justify-center text-xs text-slate-500">
-              사진 없음
-            </div>
-          )
+          <>
+            {showMealLogoUnderlay && (
+              <div
+                className="absolute inset-0 z-0 flex items-center justify-center bg-gradient-to-b from-slate-800 to-slate-900"
+                aria-hidden
+              >
+                <img
+                  src={APP_LOGO_PLACEHOLDER_SRC}
+                  alt=""
+                  className="h-[min(30%,5.75rem)] w-[min(30%,5.75rem)] object-contain opacity-[0.88]"
+                  draggable={false}
+                />
+              </div>
+            )}
+            {photoSrc ? (
+              <img
+                ref={mealImgRef}
+                src={photoSrc}
+                alt="식사 사진"
+                loading={eagerFeedImage ? "eager" : "lazy"}
+                fetchPriority={eagerFeedImage ? "high" : "auto"}
+                decoding="async"
+                className={cls(
+                  "relative z-10 aspect-square w-full object-cover transition-opacity duration-200",
+                  mealImgShown ? "opacity-100" : "opacity-0",
+                )}
+                onLoad={() => setMealImgShown(true)}
+                onError={onPhotoImgError}
+              />
+            ) : photoSrcPending ? (
+              <div
+                className="relative z-10 flex aspect-square w-full items-center justify-center"
+                aria-busy
+              >
+                <span className="sr-only">식사 사진 불러오는 중</span>
+                {!quietPhotoLoading && (
+                  <Loader2
+                    className="absolute bottom-3 right-3 h-6 w-6 shrink-0 animate-spin text-slate-500/90"
+                    aria-hidden
+                  />
+                )}
+              </div>
+            ) : (
+              <div className="relative z-10 flex aspect-square w-full items-center justify-center text-xs text-slate-500">
+                사진 없음
+              </div>
+            )}
+          </>
         ) : (
           <div className="flex aspect-square w-full items-center justify-center text-xs text-slate-500">
             사진 없음
@@ -691,8 +735,13 @@ export function MealItemEditDialog({
         <div className="mb-3 flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/50 p-2">
           {dlgHasPhoto ? (
             dlgImgPending && !dlgImgSrc ? (
-              <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-slate-800 bg-slate-900">
-                <Loader2 size={20} className="animate-spin text-slate-500" aria-hidden />
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-slate-800 bg-gradient-to-b from-slate-800 to-slate-900">
+                <img
+                  src={APP_LOGO_PLACEHOLDER_SRC}
+                  alt=""
+                  className="h-10 w-10 object-contain opacity-90"
+                  draggable={false}
+                />
               </div>
             ) : dlgImgSrc ? (
               <img
