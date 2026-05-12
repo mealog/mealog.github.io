@@ -360,6 +360,17 @@ export default function FeedPage() {
                 {loadMoreHintVisible && (
                   <span className="text-[11px] text-slate-500">아래로 스크롤하면 더 보여요</span>
                 )}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setVisibleCount((prev) =>
+                      Math.min(prev + FEED_LOAD_CHUNK, entries.length),
+                    )
+                  }
+                  className="btn-secondary mt-2 py-1.5 text-[11px]"
+                >
+                  더 불러오기
+                </button>
               </div>
             )}
           </>

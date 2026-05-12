@@ -31,14 +31,11 @@ export function publicMealItems(items: MealItem[] | undefined): MealItem[] {
 
 /**
  * 내·친구 피드 카드와 친구 공유 Firestore 업로드에 넣을 항목만.
- * 음식이 아니라고 AI 가 판별한 확정 결과(`isMealPhoto === false`)는 제외(수동 편집 저장은 포함).
+ * 피드 누락을 막기 위해 저장 완료(public) 항목은 모두 포함한다.
+ * (기존 `isMealPhoto === false` 제외 규칙은 친구 피드가 비어 보이는 원인이 되어 제거)
  */
 export function friendFeedShareableMealItems(items: MealItem[] | undefined): MealItem[] {
-  return publicMealItems(items).filter((it) => {
-    if (it.manuallyEdited) return true;
-    if (it.analysisStatus === "done" && it.isMealPhoto === false) return false;
-    return true;
-  });
+  return publicMealItems(items);
 }
 
 /** 식단 탭·끼니 헤더 요약 — 노출 항목(public) 2개 이상일 때 평균 별·칼로리 합 */
