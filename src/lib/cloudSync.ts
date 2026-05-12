@@ -279,12 +279,24 @@ export async function storedToMeal(
   }
   // 레거시 v1 — items 배열이 없을 때 top-level 사진/메뉴가 있으면 items[0] 으로 변환해 읽는다.
   const blobs = await blobsFromFirestorePhotoBase64(s.photoBase64, s.photoMimeType);
+  const legacyPhotoPath =
+    typeof s.photoPath === "string" && s.photoPath.trim() ? s.photoPath.trim() : undefined;
+  const legacyThumbPath =
+    typeof s.thumbnailPath === "string" && s.thumbnailPath.trim() ? s.thumbnailPath.trim() : undefined;
   const legacyItem: MealItem | null =
-    s.photoBase64 || s.menuText || s.rating || s.aiComment || s.nutrition
+    s.photoBase64 ||
+    legacyPhotoPath ||
+    legacyThumbPath ||
+    s.menuText ||
+    s.rating ||
+    s.aiComment ||
+    s.nutrition
       ? {
           id: `${s.id}__i0`,
           photo: blobs?.photo,
           thumbnail: blobs?.thumbnail,
+          ...(legacyPhotoPath ? { photoStoragePath: legacyPhotoPath } : {}),
+          ...(legacyThumbPath ? { thumbStoragePath: legacyThumbPath } : {}),
           menuText: s.menuText,
           rating: s.rating,
           aiComment: s.aiComment,
