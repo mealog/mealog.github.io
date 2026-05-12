@@ -33,11 +33,16 @@ npx --yes @bubblewrap/cli@latest update
 npx --yes @bubblewrap/cli@latest build
 ```
 
-## Play 업로드 후 필수
+## Play 업로드 후 필수 (`assetlinks.json`)
 
-1. Play Console → **앱 서명**에서 **SHA-256** 지문 복사
-2. 레포 `public/.well-known/assetlinks.json`의 `sha256_cert_fingerprints`를 그 값으로 바꾸고 웹 재배포
+1. **로컬 업로드 키** 지문으로 갱신(레포 루트에서):
 
+   ```powershell
+   $env:BUBBLEWRAP_KEYSTORE_PASSWORD = '키스토어 비밀번호'
+   npm run assetlinks:sync
+   ```
+
+2. **Play 앱 서명**을 쓰면 콘솔 → **앱 서명**의 **SHA-256** 이 위와 다를 수 있습니다. 그 값을 `public/.well-known/assetlinks.json` 의 `sha256_cert_fingerprints` 배열에 **추가**한 뒤 `npm run build` 로 웹 재배포하세요.
 ## 폴더를 레포 밖에 두고 싶다면
 
 이 디렉터리 전체를 `C:\work\muklog-twa-android` 등으로 복사한 뒤 같은 명령을 실행하면 됩니다.

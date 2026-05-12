@@ -67,14 +67,18 @@ npx --yes @bubblewrap/cli@latest init --manifest=https://muklog.github.io/manife
 
 TWA가 **주소표시줄 없이** 신뢰 가능한 상태로 여는지 검증할 때 필요합니다.
 
-1. 플레이 **앱 서명**(또는 Play App Signing 이 켜졌으면 플레이 콘솔에서 보이는 인증서)의 **SHA-256** 값을 확인합니다.
-2. `docs/assetlinks.example.json` 을 참고해 `package_name`, `sha256_cert_fingerprints`를 채운 **최종 `assetlinks.json`** 을 준비합니다.
-3. 레포에는 **`public/.well-known/assetlinks.json`** 이 포함되어 있으며, 기본 패키지명은 `io.github.muklog.app` 입니다. **SHA-256 은 아직 플레이스홀더(0만 64자)** 이므로, Play App Signing 인증서 지문으로 **반드시 교체**한 뒤 다시 배포하세요.  
-   사이트에 **`https://muklog.github.io/.well-known/assetlinks.json`** 로 배포되는지 확인합니다.
+1. **로컬 업로드 키** 기준으로 자동 갱신하려면 키스토어를 만든 뒤:
 
-   **패키지명·SHA-256이 확정되기 전** 잘못된 값이면 TWA 검증만 실패합니다. 플레이스홀더를 실제 값으로 바꿀 때까지 연결은 통과하지 않습니다.
+   ```powershell
+   $env:BUBBLEWRAP_KEYSTORE_PASSWORD = '키스토어 비밀번호'
+   npm run assetlinks:sync
+   ```
 
-4. 브라우저에서 해당 URL 이 **200**, **JSON 배열** 형태인지 확인합니다.
+   → `public/.well-known/assetlinks.json` 이 `twa-manifest.json` 의 **packageId**·**signingKey.alias** 와 맞게 덮어씌워집니다.
+
+2. **Play 앱 서명**을 쓰면 콘솔의 **앱 서명 인증서** SHA-256 이 업로드 키와 다를 수 있습니다. 그때는 콘솔 지문을 `sha256_cert_fingerprints` 배열에 **추가**하세요.
+
+3. `npm run build` 후 배포하여 `https://muklog.github.io/.well-known/assetlinks.json` 이 새 내용인지 확인합니다.
 
 참고: 이 앱은 **Hash 라우팅 (`/#/`)** 을 사용합니다. TWA 런처 URL 은 매니페스트 `start_url` 과 맞물리므로, Bubblewrap 초기화 시 기본 제공 URL 로 두는 편이 단순합니다.
 
@@ -93,7 +97,8 @@ bubblewrap build
 
 ## `package.json` 스크립트
 
-로컬에서는 `twa-android/setup-and-build.ps1` 를 권장합니다. CLI만 보려면:
+- **`npm run assetlinks:sync`** — `twa-android/android.keystore` + `twa-manifest.json` 기준으로 `public/.well-known/assetlinks.json` 갱신 (비밀번호: `BUBBLEWRAP_KEYSTORE_PASSWORD`).
+- 로컬에서는 `twa-android/setup-and-build.ps1` 를 권장합니다. CLI만 보려면:
 
 ```bash
 npx --yes @bubblewrap/cli@latest --help
@@ -108,7 +113,7 @@ npx --yes @bubblewrap/cli@latest --help
   - 배포 후: **`https://muklog.github.io/#/privacy`** (HashRouter)
 - [ ] 계정 기능이 있음 → 로그인·데이터 처리 설명이 설명글과 일치하는지 확인
 - [ ] Firebase 규칙·쿼터·API 키 제한 검토
-- [ ] **`assetlinks.json`** — `public/.well-known/assetlinks.json` 의 **SHA-256 플레이스홀더**를 Play App Signing 지문으로 교체 후 재배포
+- [ ] **`assetlinks.json`** — `npm run assetlinks:sync` 로 업로드 키 지문 반영 후, Play 앱 서명 지문이 다르면 배열에 추가·`npm run build` 로 재배포
 
 ## 플레이 콘솔 Data safety 참고
 
