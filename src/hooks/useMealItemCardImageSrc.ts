@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type RefCallback } from "react";
+import { useCallback, useEffect, useMemo, useState, type RefCallback } from "react";
 import type { MealItem } from "../types";
 import {
   blobFromStoragePath,
@@ -49,7 +49,14 @@ export function useMealItemCardImageSrc(
     [mayDefer, eagerImage],
   );
 
-  const path = item.thumbStoragePath || item.photoStoragePath;
+  const candidatePaths = useMemo(
+    () =>
+      [item.thumbStoragePath?.trim(), item.photoStoragePath?.trim()].filter(
+        (v, i, arr): v is string => !!v && arr.indexOf(v) === i,
+      ),
+    [item.thumbStoragePath, item.photoStoragePath],
+  );
+  const primaryPath = candidatePaths[0];
 
   useEffect(() => {
     setUrlSrc(undefined);
@@ -85,7 +92,7 @@ export function useMealItemCardImageSrc(
   }, [mayDefer, eagerImage, item.id, rootEl]);
 
   useEffect(() => {
-    if (!mayDefer || !shouldFetch || !path) return;
+    if (!mayDefer || !shouldFetch || candidatePaths.length === 0) return;
     let cancelled = false;
     setStorageFetchDone(false);
     setUrlSrc(undefined);
@@ -93,14 +100,29 @@ export function useMealItemCardImageSrc(
 
     void (async () => {
       try {
-        const u = await getDownloadUrlForStoragePath(path);
-        if (!cancelled) setUrlSrc(u);
-      } catch {
-        try {
-          const b = await blobFromStoragePath(path);
-          if (!cancelled && isRenderableImageBlob(b)) setBlobFb(b);
-        } catch {
-          /* 사진 없음 */
+        let urlResolved = false;
+        for (const p of candidatePaths) {
+          try {
+            const u = await getDownloadUrlForStoragePath(p);
+            if (!cancelled) setUrlSrc(u);
+            urlResolved = true;
+            break;
+          } catch {
+            /* 다음 후보 경로로 진행 */
+          }
+        }
+        if (!urlResolved) {
+          for (const p of candidatePaths) {
+            try {
+              const b = await blobFromStoragePath(p);
+              if (!cancelled && isRenderableImageBlob(b)) {
+                setBlobFb(b);
+                break;
+              }
+            } catch {
+              /* 다음 후보 경로로 진행 */
+            }
+          }
         }
       } finally {
         if (!cancelled) setStorageFetchDone(true);
@@ -110,7 +132,7 @@ export function useMealItemCardImageSrc(
     return () => {
       cancelled = true;
     };
-  }, [mayDefer, shouldFetch, path, item.id]);
+  }, [mayDefer, shouldFetch, item.id, candidatePaths]);
 
   const blobHook = useBlobImgSrc(hasRenderableBlob ? existing : blobFb);
   const src = hasRenderableBlob ? blobHook.src : urlSrc ?? blobHook.src;
@@ -119,7 +141,7 @@ export function useMealItemCardImageSrc(
     ? !shouldFetch || !storageFetchDone || (!src && blobHook.pending)
     : blobHook.pending;
 
-  const storagePathForError = path;
+  const storagePathForError = primaryPath;
 
   const onImgError = useCallback(() => {
     if (storagePathForError && urlSrc && !blobFb) {

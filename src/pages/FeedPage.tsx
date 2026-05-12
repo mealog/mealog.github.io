@@ -355,7 +355,6 @@ export default function FeedPage() {
               <div
                 ref={sentinelRef}
                 className="flex flex-col items-center gap-1 py-5 text-center"
-                aria-hidden
               >
                 {loadMoreHintVisible && (
                   <span className="text-[11px] text-slate-500">아래로 스크롤하면 더 보여요</span>
