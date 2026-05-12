@@ -20,7 +20,6 @@ import {
   X,
 } from "lucide-react";
 import type { MealItem } from "../types";
-import { useBlobImgSrc } from "../hooks/useBlobImgSrc";
 import { useMealItemCardImageSrc } from "../hooks/useMealItemCardImageSrc";
 import { isRenderableImageBlob } from "../lib/image";
 import { cls } from "../lib/utils";
@@ -199,7 +198,7 @@ export function MealItemCard({
         )}
         {showPhotoAnalyzingOverlay && item.analysisStatus === "analyzing" && (
           <div
-            className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-950/60 backdrop-blur-[2px]"
+            className="absolute inset-0 z-[15] flex flex-col items-center justify-center gap-2 bg-slate-950/60 backdrop-blur-[2px]"
             aria-busy
             aria-live="polite"
           >
@@ -208,19 +207,9 @@ export function MealItemCard({
             <AnalyzingDelayHint active readOnly={readOnly} />
           </div>
         )}
-        <span className="absolute left-2 top-2 rounded-full bg-slate-950/70 px-2 py-0.5 text-[10px] font-semibold text-slate-200 backdrop-blur">
+        <span className="pointer-events-none absolute left-2 top-2 z-20 rounded-full bg-slate-950/85 px-2 py-0.5 text-[10px] font-semibold text-slate-200 shadow-sm ring-1 ring-slate-700/80 backdrop-blur">
           #{index + 1}
         </span>
-        {!readOnly && onRemove && (
-          <button
-            type="button"
-            onClick={onRemove}
-            className="absolute right-2 top-2 rounded-full bg-slate-950/70 p-1.5 text-slate-200 backdrop-blur hover:text-rose-300"
-            aria-label="이 사진 삭제"
-          >
-            <Trash2 size={14} />
-          </button>
-        )}
       </div>
       <ItemAnalysisBlock
         item={item}
@@ -229,6 +218,7 @@ export function MealItemCard({
         reanalyzeBusy={reanalyzeBusy}
         onReanalyze={onReanalyze}
         onEdit={onEdit}
+        onRemove={onRemove}
       />
       </div>
     </div>
@@ -370,6 +360,8 @@ interface AnalysisProps {
   reanalyzeBusy?: boolean;
   onReanalyze?: () => void;
   onEdit?: () => void;
+  /** 사진 위가 아닌 분석 영역에서 삭제 (내 기록·피드 등) */
+  onRemove?: () => void;
 }
 
 /** Firestore 상태 필드(analyzing)와 실제 본문이 잠깐 어긋나도 결과가 오면 받침판을 우선 표시한다. */
@@ -461,6 +453,7 @@ export function ItemAnalysisBlock({
   reanalyzeBusy = false,
   onReanalyze,
   onEdit,
+  onRemove,
 }: AnalysisProps) {
   if (mealItemHasSyncedAnalysisPayload(item)) {
     return (
@@ -523,10 +516,20 @@ export function ItemAnalysisBlock({
                 </>
               )}
             </span>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               {onEdit && (
                 <button onClick={onEdit} className="inline-flex items-center gap-1 hover:text-slate-300">
                   <Pencil size={11} /> 수정
+                </button>
+              )}
+              {onRemove && (
+                <button
+                  type="button"
+                  onClick={onRemove}
+                  className="inline-flex items-center gap-1 text-rose-300/90 hover:text-rose-200"
+                  aria-label="이 사진 삭제"
+                >
+                  <Trash2 size={11} /> 삭제
                 </button>
               )}
               {canAnalyze && onReanalyze && (
@@ -589,13 +592,13 @@ export function ItemAnalysisBlock({
           <span className="break-all">{item.analysisError ?? "분석 실패"}</span>
         </div>
         {!readOnly && (
-          <div className="flex gap-1.5">
+          <div className="flex flex-wrap gap-1.5">
             {canAnalyze && onReanalyze && (
               <button
                 type="button"
                 onClick={onReanalyze}
                 disabled={reanalyzeBusy}
-                className="btn-secondary flex-1 py-2 text-sm disabled:opacity-60"
+                className="btn-secondary flex-1 py-2 text-sm disabled:opacity-60 sm:min-w-[7rem]"
               >
                 {reanalyzeBusy ? (
                   <Loader2 size={14} className="animate-spin" aria-hidden />
@@ -606,8 +609,18 @@ export function ItemAnalysisBlock({
               </button>
             )}
             {onEdit && (
-              <button onClick={onEdit} className="btn-secondary flex-1 py-2 text-sm">
+              <button onClick={onEdit} className="btn-secondary flex-1 py-2 text-sm sm:min-w-[7rem]">
                 <Pencil size={14} /> 직접 입력
+              </button>
+            )}
+            {onRemove && (
+              <button
+                type="button"
+                onClick={onRemove}
+                className="btn-secondary flex-1 border-rose-500/25 py-2 text-sm text-rose-200 hover:border-rose-500/40 hover:bg-rose-500/10 sm:min-w-[7rem]"
+                aria-label="이 사진 삭제"
+              >
+                <Trash2 size={14} /> 삭제
               </button>
             )}
           </div>
@@ -619,13 +632,13 @@ export function ItemAnalysisBlock({
     return <p className="text-xs text-slate-500">분석 결과가 없어요.</p>;
   }
   return (
-    <div className="flex gap-1.5">
+    <div className="flex flex-wrap gap-1.5">
       {canAnalyze && onReanalyze && (
         <button
           type="button"
           onClick={onReanalyze}
           disabled={reanalyzeBusy}
-          className="btn-secondary flex-1 py-2 text-sm disabled:opacity-60"
+          className="btn-secondary flex-1 py-2 text-sm disabled:opacity-60 sm:min-w-[8rem]"
         >
           {reanalyzeBusy ? (
             <Loader2 size={14} className="animate-spin" aria-hidden />
@@ -636,8 +649,18 @@ export function ItemAnalysisBlock({
         </button>
       )}
       {onEdit && (
-        <button onClick={onEdit} className="btn-secondary flex-1 py-2 text-sm">
+        <button onClick={onEdit} className="btn-secondary flex-1 py-2 text-sm sm:min-w-[8rem]">
           <Pencil size={14} /> 직접 입력
+        </button>
+      )}
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="btn-secondary flex-1 border-rose-500/25 py-2 text-sm text-rose-200 hover:border-rose-500/40 hover:bg-rose-500/10 sm:min-w-[8rem]"
+          aria-label="이 사진 삭제"
+        >
+          <Trash2 size={14} /> 삭제
         </button>
       )}
     </div>
@@ -668,7 +691,6 @@ export function MealItemEditDialog({
   onSave,
 }: EditDialogProps) {
   const [menu, setMenu] = useState(item.menuText ?? "");
-  const [comment, setComment] = useState(item.aiComment ?? "");
   const [cal, setCal] = useState<string>(numToStr(item.nutrition?.calories));
   const [carb, setCarb] = useState<string>(numToStr(item.nutrition?.carbs));
   const [pro, setPro] = useState<string>(numToStr(item.nutrition?.protein));
@@ -688,12 +710,15 @@ export function MealItemEditDialog({
   }, [onClose]);
 
   const dlgPhotoBlob = item.thumbnail ?? item.photo;
-  const dlgHasPhoto = isRenderableImageBlob(dlgPhotoBlob);
+  const dlgHasPhoto =
+    isRenderableImageBlob(dlgPhotoBlob) ||
+    !!(item.thumbStoragePath || item.photoStoragePath);
   const {
     src: dlgImgSrc,
     pending: dlgImgPending,
     onImgError: onDlgImgError,
-  } = useBlobImgSrc(dlgPhotoBlob);
+    wrapRef: dlgWrapRef,
+  } = useMealItemCardImageSrc(item, { eagerImage: true });
 
   async function doSave(reanalyze: boolean) {
     if (!menu.trim()) {
@@ -720,7 +745,7 @@ export function MealItemEditDialog({
       await onSave(
         {
           menuText: menu.trim(),
-          aiComment: comment.trim() || undefined,
+          aiComment: item.aiComment?.trim() || undefined,
           nutrition: hasAny ? nutrition : undefined,
         },
         { reanalyze },
@@ -770,33 +795,25 @@ export function MealItemEditDialog({
         </header>
 
         <div className="mb-3 flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/50 p-2">
-          {dlgHasPhoto ? (
-            dlgImgPending && !dlgImgSrc ? (
-              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-slate-800 bg-gradient-to-b from-slate-800 to-slate-900">
-                <img
-                  src={APP_LOGO_PLACEHOLDER_SRC}
-                  alt=""
-                  className="h-10 w-10 object-contain opacity-90"
-                  draggable={false}
-                />
-              </div>
-            ) : dlgImgSrc ? (
-              <img
-                src={dlgImgSrc}
-                alt=""
-                className="h-16 w-16 rounded-lg border border-slate-800 object-cover"
-                onError={onDlgImgError}
+          <div
+            ref={dlgWrapRef}
+            className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-slate-800 bg-slate-900"
+          >
+            {dlgHasPhoto ? (
+              <MealItemCardPhotoBody
+                key={`dlg-${item.id}|${dlgImgSrc ?? ""}`}
+                photoSrc={dlgImgSrc}
+                photoSrcPending={dlgImgPending}
+                quietPhotoLoading
+                eagerFeedImage
+                onPhotoImgError={onDlgImgError}
               />
             ) : (
-              <div className="h-16 w-16 rounded-lg border border-slate-800 bg-slate-900 text-center text-[10px] leading-[4rem] text-slate-500">
+              <div className="flex h-full w-full items-center justify-center px-0.5 text-center text-[9px] leading-tight text-slate-500">
                 사진 없음
               </div>
-            )
-          ) : (
-            <div className="h-16 w-16 rounded-lg border border-slate-800 bg-slate-900 text-center text-[10px] leading-[4rem] text-slate-500">
-              사진 없음
-            </div>
-          )}
+            )}
+          </div>
           <div className="min-w-0 flex-1">
             <p className="text-[11px] text-slate-400">
               {variant === "addManual"
@@ -820,16 +837,6 @@ export function MealItemEditDialog({
               onChange={(e) => setMenu(e.target.value)}
               placeholder="예: 김치찌개, 공깃밥"
               className="input"
-            />
-          </Field>
-
-          <Field label="한 줄 평 (선택)">
-            <textarea
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              rows={2}
-              placeholder="예: 나트륨 조금 과했어요."
-              className="input resize-none text-sm"
             />
           </Field>
 
