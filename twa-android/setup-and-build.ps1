@@ -128,8 +128,11 @@ foreach ($rel in @(".\build")) {
 }
 
 Write-Host ">>> bubblewrap update (Gradle 프로젝트 생성/갱신)"
-# 대화형 버전 질문 회피 — twa-manifest 의 appVersion 과 맞춤(첫 빌드 후에는 버전만 올려서 재실행)
-npx --yes @bubblewrap/cli@latest update --appVersionName="1.0.0"
+# twa-manifest.json 의 appVersionName / appVersionCode 를 Gradle 에 반영 (버전 올릴 때는 manifest 만 수정)
+$manifestJson = Get-Content -LiteralPath ".\twa-manifest.json" -Raw -Encoding UTF8 | ConvertFrom-Json
+$vn = [string]$manifestJson.appVersionName
+if (-not $vn) { $vn = "1.0.0" }
+npx --yes @bubblewrap/cli@latest update --appVersionName="$vn"
 
 Write-Host ">>> bubblewrap build (AAB/APK)"
 npx --yes @bubblewrap/cli@latest build
