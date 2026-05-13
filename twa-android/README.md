@@ -43,6 +43,14 @@ npm run android:build-aabs:internal-closed
 
 성공 시 이 디렉터리에 `app-release-bundle.aab`(Play 업로드용) 등이 생성됩니다.
 
+레포의 `twa-manifest.json`은 비공개 테스트 재업로드용으로 **versionCode / versionName**이 올라가 있을 수 있습니다. 루트에서 한 번에 빌드하려면:
+
+```powershell
+$env:BUBBLEWRAP_KEYSTORE_PASSWORD = '...'
+$env:BUBBLEWRAP_KEY_PASSWORD      = '...'
+npm run android:build-twa
+```
+
 ### `EBUSY` / `gradlew.bat` 없음
 
 - `bubblewrap update` 중 **`resource busy or locked`** 가 나오면 보통 **다른 프로세스가 `app\build` 를 잡고 있을 때**입니다. **Android Studio**에서 이 폴더를 연 프로젝트가 있으면 닫고, **탐색기**로 `app\build` 안을 보던 창도 닫은 뒤 `setup-and-build.ps1` 을 다시 실행하세요.
