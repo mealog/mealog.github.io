@@ -21,7 +21,7 @@
     "alias": "muklog"
   },
   "appVersionName": "0.1.0",
-  "appVersionCode": 9,
+  "appVersionCode": 10,
   "shortcuts": [],
   "generatorApp": "bubblewrap-cli",
   "webManifestUrl": "https://muklog.github.io/manifest.webmanifest",

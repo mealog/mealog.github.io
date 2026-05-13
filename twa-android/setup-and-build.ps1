@@ -134,6 +134,14 @@ $vn = [string]$manifestJson.appVersionName
 if (-not $vn) { $vn = "1.0.0" }
 npx --yes @bubblewrap/cli@latest update --appVersionName="$vn"
 
+Write-Host ">>> TWA 스플래시(앱 아이콘 둥근 모서리)"
+$patchScript = Join-Path $PSScriptRoot "..\scripts\patch-twa-splash-rounded.mjs"
+if (Test-Path -LiteralPath $patchScript) {
+  & node $patchScript
+} else {
+  Write-Warning "스플래시 패치 스크립트 없음: $patchScript"
+}
+
 Write-Host ">>> bubblewrap build (AAB/APK)"
 npx --yes @bubblewrap/cli@latest build
 

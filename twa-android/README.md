@@ -10,7 +10,7 @@
 
 질문이 나오면 **JDK 자동 설치**: 이미 PC에 JDK 17을 썼다면 **`n`** (No) — Bubblewrap이 또 JDK를 받지 않습니다. **`Y`는 중복 설치**에 가깝습니다.
 
-`setup-and-build.ps1`는 `JAVA_HOME`을 잡고, 첫 질문에 자동으로 `n`을 넣도록 되어 있습니다.
+`setup-and-build.ps1` 는 `JAVA_HOME` 을 잡고, 첫 질문에 자동으로 `n` 을 넣도록 되어 있습니다. `bubblewrap update` 직후 **`npm run android:patch-splash`** 와 동일한 스플래시 패치를 실행해, TWA 첫 화면 아이콘 모서리를 둥글게 맞춥니다.
 
 ## 버전 규칙 (Play)
 
@@ -46,14 +46,17 @@ npx --yes @bubblewrap/cli@latest build
 
 ## Play 업로드 후 필수 (`assetlinks.json`)
 
-1. **로컬 업로드 키** 지문으로 갱신(레포 루트에서):
+TWA가 스플래시에서 멈추면 **배포된 `assetlinks.json` 지문이 앱 서명과 불일치**한 경우가 대부분입니다.
+
+1. 레포 루트에서 **업로드 키** + (권장) **Play 앱 서명** 지문을 넣습니다:
 
    ```powershell
    $env:BUBBLEWRAP_KEYSTORE_PASSWORD = '키스토어 비밀번호'
+   $env:PLAY_APP_SIGNING_SHA256 = 'Play 콘솔 앱 서명 인증서 SHA-256'   # 콜론 있/없음 모두 가능
    npm run assetlinks:sync
    ```
 
-2. **Play 앱 서명**을 쓰면 콘솔 → **앱 서명**의 **SHA-256** 이 위와 다를 수 있습니다. 그 값을 `public/.well-known/assetlinks.json` 의 `sha256_cert_fingerprints` 배열에 **추가**한 뒤 `npm run build` 로 웹 재배포하세요.
+2. `npm run build` 로 웹을 다시 배포해 `https://muklog.github.io/.well-known/assetlinks.json` 이 갱신되었는지 확인합니다.
 
 ## 폴더를 레포 밖에 두고 싶다면
 

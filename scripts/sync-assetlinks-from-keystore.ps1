@@ -3,8 +3,9 @@
 #   $env:BUBBLEWRAP_KEYSTORE_PASSWORD = '키스토어 비밀번호'
 #   npm run assetlinks:sync
 #
-# Play 앱 서명만 쓰는 경우: 콘솔의 "앱 서명 인증서" SHA-256 과 이 스크립트 결과(업로드 키)가 다를 수 있습니다.
-# 다르면 assetlinks.json 에 Play 가 안내하는 지문을 추가 항목으로 넣으세요.
+# Play 앱 서명만 쓰는 경우: 콘솔의 "앱 서명 인증서" SHA-256 과 업로드 키 지문이 다를 수 있습니다.
+#   $env:PLAY_APP_SIGNING_SHA256 = 'AA:BB:...'   # 콘솔 값 복사(콜론 있/없음 모두 가능)
+# 를 같이 쓰면 assetlinks.json 의 sha256_cert_fingerprints 배열에 둘 다 넣습니다.
 
 param(
   [string]$Keystore = "",
@@ -54,13 +55,36 @@ if ($out -notmatch '(?m)SHA256:\s*((?:[0-9A-Fa-f]{2}:)+[0-9A-Fa-f]{2})') {
 }
 $fingerprint = $Matches[1].Trim().ToUpperInvariant()
 
+function Normalize-Sha256Hex([string]$raw) {
+  $t = $raw.Trim().ToUpperInvariant() -replace '\s', '' -replace ':', ''
+  if ($t.Length -ne 64) {
+    throw "SHA-256 hex 는 64자여야 합니다. 입력 길이: $($t.Length)"
+  }
+  $parts = @()
+  for ($i = 0; $i -lt 64; $i += 2) {
+    $parts += $t.Substring($i, 2)
+  }
+  return ($parts -join ':')
+}
+
+$fps = [System.Collections.Generic.List[string]]::new()
+$fps.Add($fingerprint)
+
+if ($env:PLAY_APP_SIGNING_SHA256 -and $env:PLAY_APP_SIGNING_SHA256.Trim().Length -gt 0) {
+  $playFp = Normalize-Sha256Hex $env:PLAY_APP_SIGNING_SHA256
+  if (-not $fps.Contains($playFp)) {
+    $fps.Add($playFp)
+    Write-Host "  + Play 앱 서명 SHA256 (PLAY_APP_SIGNING_SHA256)"
+  }
+}
+
 $jsonObj = @(
   @{
     relation = @("delegate_permission/common.handle_all_urls")
     target     = @{
-      namespace              = "android_app"
-      package_name           = $PackageName
-      sha256_cert_fingerprints = @($fingerprint)
+      namespace               = "android_app"
+      package_name            = $PackageName
+      sha256_cert_fingerprints = @($fps.ToArray())
     }
   }
 )
@@ -69,5 +93,7 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding $false
 [System.IO.File]::WriteAllText($outPath, $json + "`n", $utf8NoBom)
 Write-Host "작성됨: $outPath"
 Write-Host "  package_name: $PackageName"
-Write-Host "  SHA256:       $fingerprint"
+foreach ($fp in $fps) {
+  Write-Host "  SHA256:       $fp"
+}
 Write-Host "다음: npm run build 후 배포해 https://muklog.github.io/.well-known/assetlinks.json 을 확인하세요."

@@ -29,6 +29,31 @@ import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { DmRealtimeProvider } from "./contexts/DmRealtimeContext";
 import { STALL_REFRESH_HINT } from "./lib/tabLoadingMessage";
 import type { AppSettings } from "./types";
+import appIconSrc from "../assets/app-icon.png?url";
+
+function AppBootLogoBlock({
+  headline,
+  sub,
+  compact,
+}: {
+  headline: string;
+  sub: string;
+  compact?: boolean;
+}) {
+  const box = compact ? "h-16 w-16" : "h-20 w-20";
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <div
+        className={`relative ${box} shrink-0 overflow-hidden rounded-[22%] shadow-[0_10px_28px_-10px_rgba(0,0,0,0.55)] ring-1 ring-white/12`}
+        aria-hidden
+      >
+        <img src={appIconSrc} alt="" className="h-full w-full object-cover opacity-95" draggable={false} />
+      </div>
+      <p className="text-sm text-slate-300">{headline}</p>
+      <p className="text-xs text-slate-600">{sub}</p>
+    </div>
+  );
+}
 
 /** 온보딩 완료 후 Dexie userCount 가 잠깐 0인 타이밍에 /onboarding 으로 튕기지 않도록, 완료 플래그를 우선한다. */
 function shouldRedirectToOnboarding(settings: AppSettings, userCount: number): boolean {
@@ -139,9 +164,8 @@ export default function App() {
   // 데이터 로딩 중
   if (gate === undefined) {
     return (
-      <div className="app-shell flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-slate-500">
-        <p>로딩 중…</p>
-        <p className="text-xs text-slate-600">{STALL_REFRESH_HINT}</p>
+      <div className="app-shell flex h-full flex-col items-center justify-center gap-2 bg-slate-950 px-6 text-center">
+        <AppBootLogoBlock headline="로딩 중…" sub={STALL_REFRESH_HINT} />
       </div>
     );
   }
@@ -237,8 +261,7 @@ export default function App() {
 
             {blockingHydration ? (
               <div className="flex min-h-full flex-col items-center justify-center gap-2 bg-slate-950 px-6 py-12 text-center text-slate-500">
-                <p className="text-sm text-slate-300">계정 데이터를 불러오는 중…</p>
-                <p className="text-xs text-slate-500">{STALL_REFRESH_HINT}</p>
+                <AppBootLogoBlock compact headline="계정 데이터를 불러오는 중…" sub={STALL_REFRESH_HINT} />
               </div>
             ) : (
               <AppErrorBoundary>
