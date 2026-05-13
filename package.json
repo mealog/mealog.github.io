@@ -19,6 +19,7 @@
     "deploy:storage-cors": "gsutil cors set storage-cors.json gs://healthhealth-23fa9.firebasestorage.app",
     "deploy:storage-cors:appspot": "gsutil cors set storage-cors.json gs://healthhealth-23fa9.appspot.com",
     "gen:icons": "node scripts/gen-pwa-icons.mjs",
+    "gen:play-graphic": "node scripts/gen-play-feature-graphic.mjs",
     "android:bubblewrap": "npx --yes @bubblewrap/cli@latest",
     "assetlinks:sync": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/sync-assetlinks-from-keystore.ps1"
   },
