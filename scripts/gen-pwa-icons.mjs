@@ -25,10 +25,14 @@ const EDGE_INSET_RATIO = 0;
  * 최종 PNG 한 변(px)에서 실제 그림이 들어가는 안쪽 정사각형 비율.
  * 작을수록 런처 마스크에 덜 잘림(여백↑). 대략 0.62~0.78 사이에서 조절.
  */
-const ICON_CONTENT_RATIO = 0.85;
+const ICON_CONTENT_RATIO = 0.78;
 
-/** letterbox / 바깥 여백 — manifest background_color 와 맞춤 */
-const ICON_BG = { r: 15, g: 23, b: 42, alpha: 1 };
+/**
+ * letterbox / 바깥 여백 — index.css 기본 `--surface-app`(그린 테마) 과 동일 톤.
+ * (과거 slate-900 #0f172a 는 남색 테두리로 보여 앱 셸 배경과 어긋남)
+ */
+const ICON_BG = { r: 6, g: 26, b: 22, alpha: 1 };
+const ICON_BG_HEX = "#061a16";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
@@ -60,7 +64,7 @@ if (inset > 0) {
   );
 }
 console.warn(
-  `[gen-pwa-icons] 안전 여백: 그림 ${Math.round(ICON_CONTENT_RATIO * 100)}% 안쪽에 맞춤 (배경 #0f172a)`,
+  `[gen-pwa-icons] 안전 여백: 그림 ${Math.round(ICON_CONTENT_RATIO * 100)}% 안쪽에 맞춤 (배경 ${ICON_BG_HEX})`,
 );
 
 /**

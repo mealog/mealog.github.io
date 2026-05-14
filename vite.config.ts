@@ -33,7 +33,7 @@ export default defineConfig(({ command }) => ({
         short_name: "먹로그",
         description: "달력·식단·AI 분석과 친구 피드 — 한 기기에서는 내 기록 중심",
         theme_color: "#10b981",
-        background_color: "#0f172a",
+        background_color: "#061a16",
         display: "standalone",
         orientation: "portrait",
         lang: "ko",

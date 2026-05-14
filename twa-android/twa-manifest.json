@@ -5,12 +5,12 @@
   "launcherName": "먹로그",
   "display": "standalone",
   "themeColor": "#10B981",
-  "themeColorDark": "#0F172A",
-  "navigationColor": "#0F172A",
+  "themeColorDark": "#061a16",
+  "navigationColor": "#061a16",
   "navigationColorDark": "#000000",
   "navigationDividerColor": "#000000",
   "navigationDividerColorDark": "#000000",
-  "backgroundColor": "#0F172A",
+  "backgroundColor": "#061a16",
   "enableNotifications": false,
   "startUrl": "/#/",
   "iconUrl": "https://muklog.github.io/pwa-512.png",
@@ -20,8 +20,8 @@
     "path": "./android.keystore",
     "alias": "muklog"
   },
-  "appVersionName": "0.1.11",
-  "appVersionCode": 25,
+  "appVersionName": "0.1.12",
+  "appVersionCode": 27,
   "shortcuts": [],
   "generatorApp": "bubblewrap-cli",
   "webManifestUrl": "https://muklog.github.io/manifest.webmanifest",
@@ -39,5 +39,5 @@
   "additionalTrustedOrigins": [],
   "retainedBundles": [],
   "displayOverride": [],
-  "appVersion": "0.1.11"
+  "appVersion": "0.1.12"
 }
