@@ -61,7 +61,7 @@ const totalH = SIDE + labelBar + pad * 2;
 
 const labelSvg = Buffer.from(
   `<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="${labelBar + pad}">
-    <rect width="${totalW}" height="${labelBar + pad}" fill="#061a16"/>
+    <rect width="${totalW}" height="${labelBar + pad}" fill="#FAF7E6"/>
     <text x="${pad}" y="22" fill="#94a3b8" font-size="11" font-family="system-ui,sans-serif">둥근 사각형(스쿼클 근사)</text>
     <text x="${pad + SIDE + gap}" y="22" fill="#94a3b8" font-size="11" font-family="system-ui,sans-serif">원형 폴더(근사)</text>
   </svg>`,

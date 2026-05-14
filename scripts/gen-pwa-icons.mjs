@@ -28,11 +28,11 @@ const EDGE_INSET_RATIO = 0;
 const ICON_CONTENT_RATIO = 0.78;
 
 /**
- * letterbox / 바깥 여백 — index.css 기본 `--surface-app`(그린 테마) 과 동일 톤.
- * (과거 slate-900 #0f172a 는 남색 테두리로 보여 앱 셸 배경과 어긋남)
+ * letterbox / 바깥 여백 — `assets/app-icon.png` 안의 연한 노란(크림) 배경과 동일.
+ * (런처·스플래시에서 아이콘 가장자리가 뜨지 않도록 PNG 배경과 맞춤)
  */
-const ICON_BG = { r: 6, g: 26, b: 22, alpha: 1 };
-const ICON_BG_HEX = "#061a16";
+const ICON_BG = { r: 250, g: 247, b: 230, alpha: 1 };
+const ICON_BG_HEX = "#FAF7E6";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
